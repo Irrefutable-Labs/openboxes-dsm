@@ -61,7 +61,7 @@ class RoleInterceptor {
         'console'                   : ['index', 'execute'],
         // DSM setup acts for the organization's accounts: registering a host, issuing a product's token, connecting
         // two accounts, asking for a holdings proof
-        'dsmCustodyApi'             : ['registerWarehouse', 'registerRegistry', 'issueToken', 'adoptToken', 'offerConnection', 'acceptConnection', 'confirmConnection', 'requestAdmission', 'approveRelease', 'declineRelease', 'establishInbound', 'proveHoldings'],
+        'dsmCustodyApi'             : ['registerWarehouse', 'registerRegistry', 'claimFees', 'issueToken', 'adoptToken', 'offerConnection', 'acceptConnection', 'confirmConnection', 'requestAdmission', 'approveRelease', 'declineRelease', 'establishInbound', 'proveHoldings'],
         'inventory'                 : ['createInboundTransfer', 'createConsumed', 'editTransaction', 'deleteTransaction', 'saveTransaction'],
         'inventoryItem'             : ['adjustStock', 'transferStock'],
         'productCatalog'            : ['create', 'importProductCatalog'],

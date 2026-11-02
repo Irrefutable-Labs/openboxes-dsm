@@ -15,6 +15,7 @@ import dsm.types.proto.ConnectScopeV1
 import dsm.types.proto.ConnectSessionStatus
 import dsm.types.proto.ConnectSessionV1
 import dsm.types.proto.Envelope
+import dsm.types.proto.FaucetClaimRequest
 import dsm.types.proto.TokenCreateRequest
 import dsm.types.proto.TokenCreateResponse
 import grails.core.GrailsApplication
@@ -96,6 +97,23 @@ class DsmAccountService {
                             "release authority never shares a server with custody")
         }
         return saveAccount(new DsmWarehouseAccount(label: label.trim()), ingressOrigin, dataDir)
+    }
+
+    /**
+     * ERA from the network faucet, for the fees this account's own transitions cost: a new host holds none, and cannot
+     * issue a token until it does. A claim whose admission is still held is finished by the next claim.
+     */
+    DsmWarehouseAccount claimNetworkFees(DsmWarehouseAccount account) {
+        FaucetClaimRequest request = FaucetClaimRequest.newBuilder()
+                .setDeviceId(ByteString.copyFrom(Base32Crockford.decodeId32(account.deviceId, "the device id")))
+                .build()
+        DsmHostClient client = clientFor(account)
+        DsmSteps.until("${account} claims its network fees") {
+            Envelope envelope = client.invoke("faucet.claim", request)
+            DsmHostClient.expect("faucet.claim", envelope, Envelope.PayloadCase.FAUCET_CLAIM_RESPONSE)
+                    .faucetClaimResponse.success ? Boolean.TRUE : null
+        }
+        return account
     }
 
     /**

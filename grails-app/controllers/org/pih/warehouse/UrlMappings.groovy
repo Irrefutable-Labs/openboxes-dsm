@@ -56,6 +56,10 @@ class UrlMappings {
             controller = { "dsmCustodyApi" }
             action = [POST: "registerRegistry"]
         }
+        "/api/dsm/accounts/fees"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "claimFees"]
+        }
         "/api/dsm/tokens"(parseRequest: true) {
             controller = { "dsmCustodyApi" }
             action = [GET: "tokens", POST: "issueToken"]

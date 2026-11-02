@@ -51,6 +51,10 @@ class DsmCustodyApiController extends BaseApiController {
         }
     }
 
+    def claimFees() {
+        attempt { accountJson(dsmAccountService.claimNetworkFees(account(params.accountId))) }
+    }
+
     // ------------------------------------------------------------------ tokens
 
     def tokens() {

@@ -54,3 +54,4 @@ docker/openboxes.war
 
 # The DSM storage-set helper (dsm/fleet) is a Rust crate of its own; its build output stays out of the tree.
 /dsm/fleet/target
+/dsm/demo/run

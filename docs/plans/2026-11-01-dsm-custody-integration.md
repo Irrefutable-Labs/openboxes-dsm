@@ -307,6 +307,24 @@ Running the demo by hand is the same shape, one machine or three: for each organ
 in the DSM repo), set up through `/api/dsm/...` as above. Then the ordinary OpenBoxes screens record stock, send,
 receive and consume, with admissions decided on the registry's instance and inbound custody taken in on the receiver's.
 
+### The live demo
+
+`dsm/demo/` brings the three organizations up as running services: see `dsm/demo/README.md`. One complete transfer was
+walked through in the browser on 2026-11-02 against these services.
+
+| Step | Where it was done |
+| --- | --- |
+| Record stock at A, drawn from an admission | OpenBoxes' Record stock screen |
+| Create, pick and send the shipment | OpenBoxes' Create Outbound wizard |
+| See it in B's inbound list, receive it, see B's stock on hand | OpenBoxes' screens |
+| Register a host, claim network fees | `/api/dsm/accounts`: no screen |
+| Issue or adopt a token, view reserve and holdings | `/api/dsm/tokens`: no screen |
+| Offer, accept and confirm a connection | `/api/dsm/connections`: no screen |
+| Request an admission, read its status | `/api/dsm/admissions`: no screen |
+| Approve or decline a release, read the decisions | `/api/dsm/releases`: no screen |
+| Take in custody a peer sent | `/api/dsm/inbound`: no screen, and required before B can receive |
+| View transfers, ask for a holdings proof | `/api/dsm/transfers`: no screen |
+
 ## 8. The test plan as written before building
 
 - A Rust helper crate in this fork (`dsm/fleet/`) that includes `dsm_sdk/src/test_support/nodes.rs` by
@@ -332,3 +350,7 @@ receive and consume, with admissions decided on the registry's instance and inbo
   shipment to the origin moves them back (the receiving organization makes its own offer to the origin first if it
   wants holdings proofs that way); a debit adjustment at the destination burns them. Which one a site uses is its
   own process.
+- **Rollback is not backed by DSM yet.** OpenBoxes' own rollback buttons (a shipment's Rollback, a receipt's Rollback Last
+  Receipt) reverse the OpenBoxes records without any DSM transition, so OpenBoxes' stock and the account's balance would
+  disagree afterwards. Refusing a rollback once DSM has moved the units, and sending a return shipment instead, is the
+  likely answer. Read from the code; not exercised on the running demo.
