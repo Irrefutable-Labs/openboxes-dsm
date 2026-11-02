@@ -350,7 +350,44 @@ walked through in the browser on 2026-11-02 against these services.
   shipment to the origin moves them back (the receiving organization makes its own offer to the origin first if it
   wants holdings proofs that way); a debit adjustment at the destination burns them. Which one a site uses is its
   own process.
-- **Rollback is not backed by DSM yet.** OpenBoxes' own rollback buttons (a shipment's Rollback, a receipt's Rollback Last
-  Receipt) reverse the OpenBoxes records without any DSM transition, so OpenBoxes' stock and the account's balance would
-  disagree afterwards. Refusing a rollback once DSM has moved the units, and sending a return shipment instead, is the
-  likely answer. Read from the code; not exercised on the running demo.
+- **Corrections are forward amendments (owner's ruling, 2026-11-02).** Nothing DSM established is ever reversed: a
+  correction is a new transition that names what it amends, and the original stays in the record. Not built yet:
+  OpenBoxes' own rollback buttons still rewrite its records with no DSM transition on a DSM-backed document (read from
+  the code, not exercised).
+
+## 10. The wallet design (owner's rulings, 2026-11-02): supersedes the setup in section 7
+
+Section 7 put a server account on both sides of every connection and made people use an API. That is not the design.
+DSM Connect links an application to a person's wallet, as `wildstate-release/docs/dsm-integration.md` shows.
+
+- **One uniform way of connecting.** Everyone scans a connect code with their wallet and approves it on the wallet's Apps
+  screen. No API steps and no technical knowledge.
+- **The wallet is the person.** Sign-in, identity and authorization come from it. As in Wildstate, OpenBoxes may keep a
+  Web2 login token after connecting, which is a convenience and never DSM authority.
+- **Tokens are created in the wallet.** The wallet has its own creation wizard, and a created token's whole supply goes to
+  its creator. So the cap is set once, and what has not been released stays with the creator and is counted.
+- **Organization, warehouses, then people.** Each person has their own wallet. The owner also wants a device tree, but its
+  store is not built at DSM `ad831f53e` (`CONFORMANCE_GAPS.md`: the add-device routes were deleted), so it stays a visible
+  hole until DSM builds it.
+- **Permissions are seats in custom DLVs.** Each access level is a token whose supply is the cap, released by hand as the
+  organization grows, so every seat is accounted for. A seat is one unit locked in a vault. These are DSM's existing
+  vaults used for another purpose, proven by the state machine, with nothing new in Core: SoFi is one use of DLVs, not the
+  only one. `escrow.lock` already takes the agreed bytes `X` and up to 16 outcomes, each naming who decides it (1 to 4
+  device ids) and who it pays:
+  - **Assignment:** the person's identity is hashed into `X`, so the vault's terms name its holder.
+  - **Revocation:** an outcome decided by the authority pays the authority. It is the sale mechanism without a sale:
+    authority instead of value. It is a forward step, and the holder's device takes no part in it. The authority then
+    reassigns the seat with a new vault.
+  - **Succession:** an outcome can name several deciders, so a boss's superior can act when a boss leaves.
+- **Appliances, optional.** An organization may use the Pico and the TROPIC01 for device identity and anti-cloning.
+- **Offline use, such as doors and labs, alongside badges.** A reader keeps a signed roster of seats from its last sync and
+  checks that the person's device can sign for the identity a seat names, so it keeps working with the internet down. An
+  offline reader cannot learn of a revocation until it next syncs, so each door needs its own rule for that. Unmeasured
+  risk: a DSM signature is about 50 KB, which may be too slow for a door over Bluetooth.
+
+Read from DSM's proto and specs, not yet exercised: who may build a release (A12 says the release is built on a final
+verdict by the wallet that branch pays), how a person proves a seat they hold through a vault, and how an application
+reads a vault's terms.
+
+The presentation follows Wildstate's overlay: one timeline marking what is WEB2 and what is DSM, over a realistic scenario
+with sample USD values, and running on the beta storage fleet rather than a local one.
