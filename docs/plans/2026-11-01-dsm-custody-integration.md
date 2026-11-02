@@ -192,37 +192,47 @@ later option for serialized goods and needs nothing in this design changed, only
 Only steps 4 and 5 touch existing OpenBoxes code, each at one line. Steps 2, 3 and 6 are new services and
 one admin action each.
 
-## 7. What was built (2026-11-02, option A as the owner chose)
+## 7. What was built (2026-11-02, option A as the owner chose, then every hole of section 9 closed)
+
+The model as built: a **registry account** (the organization's own `dsm-app-host`, no warehouse) issues each
+product's token with the whole supply the organization will ever take in; a **warehouse account's balance** of a
+token is exactly the units in that warehouse's custody. Every OpenBoxes inventory transaction at a DSM warehouse
+is backed by a DSM transition made before it is written:
+
+| OpenBoxes event | DSM transition | Where |
+| --- | --- | --- |
+| Shipment sent, DSM warehouse to DSM warehouse | transfer origin account to destination account, memo `openboxes:shipment:<number>` | `ShipmentService.sendShipment` → `releaseOnSend` |
+| Shipment received (v2 receiving, v1 partial receipt, legacy `receiveShipment`) | the destination's own history must hold the transfer accepted (`storage.sync`, then `wallet.history`) | `ReceiptV2Service.completeReceipt`, `ReceiptService.saveAndCompletePartialReceipt`, `ShipmentService.receiveShipment` → `requireEstablishedOnReceive` |
+| Shipment received from a location that is not on DSM | units enter custody: transfer registry to destination of the received quantity, memo `openboxes:receipt:<number>`, held before the TRANSFER_IN | same hooks |
+| Stock transfer between two DSM warehouses | transfer origin to destination, held at the destination before both mirrored transactions | `InventoryService.transferStock` → `transferBetweenWarehouses` |
+| Consumption, expiry, damage, debit adjustment, a count that found less | burn at the warehouse (`token.burn`), memo `openboxes:transaction:<number>` | `backStockChange`, from `InventoryService.adjustStock`, `saveRecordInventoryCommand`, `CycleCountTransactionService`, `InventoryController.saveDebitTransaction/saveAdjustmentTransaction/saveCreditTransaction` |
+| Credit adjustment, a count that found more | transfer registry to warehouse, held before the transaction | same |
+| Proof for a third party | holdings proof over the two accounts' Connect session, recorded only on `CONNECT_FACT_HOLDINGS` | `establishHoldingsProof`, `POST /api/dsm/transfers/<id>/proof` |
+
+A shipment from a DSM warehouse to a location without an account is refused (custody cannot leave DSM). A
+shipment from a non-DSM location to a DSM warehouse is sent as OpenBoxes always sent it; the units enter custody
+at the receipt. Warehouses with no account are untouched.
+
+Before any move into an account, the destination roots the token's anchor itself (`tokens.addByAnchor`: its host
+fetches the policy and re-hashes it to the anchor; already rooted is the idempotent case), so a token issued after
+two warehouses connected moves like any other. Pairing still roots every anchor at approval and grants the
+`HOLDINGS` scope over them, for the proofs.
+
+Idempotence: the origin account's own history is the record of what it sent, so a move retried after a failed
+OpenBoxes save is not sent twice; a burn is recorded with the transaction number's memo and refused if the memo
+was backed as something else. The three hashes involved are different objects (the sender's state hash, the
+sender's row hash, the recipient's row named by its recomputed submission id), so nothing is matched by hash
+across the two sides; the sealed memo, which the signed operation commits to, is.
 
 | Piece | Where |
 | --- | --- |
 | The DSM wire, compiled to Java at build time | `src/main/proto/dsm_app.proto` (vendored from the DSM revision in `src/main/proto/DSM_REVISION`), `com.google.protobuf` Gradle plugin 0.8.10 with protoc `protobufVersion` (3.21.11, the runtime the tree already forces) |
 | The ingress client | `src/main/groovy/org/pih/warehouse/dsm/DsmHostClient.groovy` (frames requests, reads answers, decides nothing), `Base32Crockford.groovy` (DSM's encoder mirrored), `DsmHostException`, `DsmCustodyException` |
-| OpenBoxes' records | `grails-app/domain/org/pih/warehouse/dsm/`: `DsmWarehouseAccount` (a location's host), `DsmProductToken` (a product's policy anchor), `DsmWarehouseLink` (a Connect session between two warehouses), `DsmCustodyTransfer` (one shipment's transfer of one product); migration `grails-app/migrations/0.9.x/changelog-2026-11-01-1200-create-dsm-custody-tables.xml` |
-| The service | `grails-app/services/org/pih/warehouse/dsm/DsmCustodyService.groovy`: `registerAccount`, `issueProductToken`, `pairWarehouses`, `rootTokenAtPeer`, `releaseOnSend`, `requireEstablishedOnReceive`, `establishHoldingsProof` |
-| The two hooks | `ShipmentService.sendShipment` calls `releaseOnSend` before anything is marked shipped; `ReceiptV2Service.completeReceipt` calls `requireEstablishedOnReceive` before anything on the receipt changes |
+| OpenBoxes' records | `grails-app/domain/org/pih/warehouse/dsm/`: `DsmWarehouseAccount` (a warehouse's host, or a registry), `DsmProductToken`, `DsmWarehouseLink` (a Connect session), `DsmCustodyTransfer` (one transition: SHIPMENT, STOCK_TRANSFER, REGISTRY_CREDIT or BURN); migration `grails-app/migrations/0.9.x/changelog-2026-11-01-1200-create-dsm-custody-tables.xml` |
+| The service | `grails-app/services/org/pih/warehouse/dsm/DsmCustodyService.groovy` |
+| The API | `grails-app/controllers/org/pih/warehouse/api/DsmCustodyApiController.groovy`: `GET/POST /api/dsm/accounts(/warehouses,/registries)`, `GET/POST /api/dsm/tokens`, `GET/POST /api/dsm/links`, `GET /api/dsm/transfers`, `POST /api/dsm/transfers/<id>/proof`; a DSM refusal is a 400 with DSM's reason |
 | The storage set for tests | `dsm/fleet/`: a Rust crate that includes the SDK's own node harness from the DSM checkout beside this one and runs it as a process |
-| The test | `src/integration-test/groovy/org/pih/warehouse/slice/spec/dsm/DsmCustodyShipmentSpec.groovy`, with `common/dsm/DsmTestFleet` and `DsmTestHost` starting the processes. Eight features, all passing on 2026-11-02 against the storage set, two fresh accounts and a Testcontainers MySQL: accounts, token and pairing; the send (transfer recorded, TRANSFER_OUT written after it, 90 at A, 10 at B); the receipt (established from B's own history, TRANSFER_IN written after it); the holdings proof (10 proven at B's position); an over-ship refused by DSM with nothing recorded; a shipment to a location without an account refused; a second shipment; a receipt of more units than DSM moved refused |
-
-How the pieces decide:
-
-- A send: `releaseOnSend` first reads the origin account's own history for a debit of the shipped units to the
-  destination with the shipment's memo (a retry after a failed OpenBoxes save finds the transfer it already
-  sent); otherwise `wallet.sendSmart`. The record keeps the origin's state hash after the send. The destination
-  must have rooted the product anchor beforehand: pairing roots the anchors of every token the offering
-  warehouse issued at approval, and `rootTokenAtPeer` asks for a later one under the `ACCEPT_ISSUED` scope.
-- A receipt: `requireEstablishedOnReceive` runs the destination account's `storage.sync` and reads its
-  `wallet.history` for a credit of exactly the units sent, from the origin's device, of the product's token,
-  carrying the shipment's memo. The memo travels in the sealed terms the signed operation commits to, so a row
-  that carries it was sent by the origin for this shipment. The three hashes involved are different objects
-  (the sender's state hash, the sender's row hash, the recipient's row named by its recomputed submission id),
-  so nothing is matched by hash across the two sides. A receipt recording more units than DSM moved is refused.
-- The proof: `establishHoldingsProof` asks over the Connect session and records the amount only when the
-  origin account's `connect.app.status` holds `CONNECT_FACT_HOLDINGS`, which the SDK sets only after the
-  Sparse Merkle path recomputed the destination's validated root.
-- Warehouses with no `DsmWarehouseAccount` are untouched: both hooks return at once when neither side is on
-  DSM. A shipment with exactly one side on DSM is refused with the reason (custody can neither enter nor leave
-  DSM through a warehouse that has no account).
+| The test | `src/integration-test/groovy/org/pih/warehouse/slice/spec/dsm/DsmCustodyShipmentSpec.groovy`, with `common/dsm/DsmTestFleet` and `DsmTestHost`: a registry and two warehouse hosts on the storage set, a Testcontainers MySQL, every path above driven through the application's own services and the API controller, with the balances of all three accounts checked after each step |
 
 ### Building and running
 
@@ -241,11 +251,10 @@ export DSM_TEST_DATABASE_URL='postgresql://<user>@127.0.0.1:5432/dsm_openboxes_d
 ./gradlew integrationTest --tests 'org.pih.warehouse.slice.spec.dsm.DsmCustodyShipmentSpec' -x npm_run_bundle -x npmInstall
 ```
 
-Running the demo by hand is the same shape: one `dsm-app-host` per warehouse against the network's pinned set
-(`--env-config dsm_client/frontend/public/dsm_env_config.toml` in the DSM repo), each warehouse registered with
-`registerAccount`, the product's token issued with `issueProductToken`, the two connected with
-`pairWarehouses`, then the ordinary OpenBoxes send and receive screens. There is no admin screen for the three
-setup calls yet; they are service calls.
+Running the demo by hand is the same shape: one `dsm-app-host` for the registry and one per warehouse against the
+network's pinned set (`--env-config dsm_client/frontend/public/dsm_env_config.toml` in the DSM repo), the
+accounts registered, the product's token issued by the registry and the warehouses connected through
+`/api/dsm/...`, then the ordinary OpenBoxes screens: record stock, send, receive, transfer, consume.
 
 ## 8. The test plan as written before building
 
@@ -265,20 +274,15 @@ setup calls yet; they are service calls.
   3.3.16 and the project's CI run on Java 8 only; 17, 21 and 24 are installed). Without Java 8 the Grails
   side cannot be compiled or tested here.
 
-## 9. Holes left visible, not stubbed
+## 9. What is still a decision, not a hole
 
-- Issuance from outside DSM at any warehouse other than the token's creator (a second warehouse receiving
-  the same product from a supplier) would need either one policy per receiving warehouse or a policy whose
-  signer set names several warehouses; `token.create` releases the whole supply to its creator. Not built.
-- `InventoryService.transferStock` between two locations that are both DSM identities. Not built.
-- The legacy v1 receiving path (`ShipmentController.receiveShipment`, `ReceiptService`). Not built.
-- Multiple products per shipment: one transfer per product per shipment; the design allows it, the demo
-  carries one.
-- Consumption, disposal, adjustments and cycle counts as burns or as nothing on DSM. Not decided.
-- Returns (the destination paying units back under a `PAY` scope) and partial-receipt discrepancies. Not built;
-  a receipt of fewer units than DSM moved is recorded in OpenBoxes as it is, and DSM keeps the moved units at the
-  destination.
-- An admin screen for `registerAccount`, `issueProductToken` and `pairWarehouses`. Service calls only.
-- `rootTokenAtPeer` is not called by `releaseOnSend`: a token issued after pairing must be rooted at the
-  destination by that call before the first shipment of it, or the destination's account holds the transfer
-  unaccepted and the receipt is refused with that reason.
+- **Partial receipts.** DSM moves the shipped quantity; a receipt that records fewer units leaves the remainder
+  in the destination account's custody while OpenBoxes shows fewer. Both resolutions are backed today: a return
+  shipment to the origin moves them back; a debit adjustment at the destination burns them. Which one a site uses
+  is its own process.
+- **The registry's supply.** A token's supply is fixed at creation ("the whole supply that will ever exist");
+  the registry must issue enough for every unit the organization will ever take in. A product that exhausts it
+  needs a second token, which `DsmProductToken` (one token per product) does not hold yet.
+- **Several OpenBoxes instances.** All of this runs inside one OpenBoxes instance that holds every account. Two
+  organizations each with their own OpenBoxes would connect their warehouses across instances with the same
+  Connect pairing; the memo and the shipment number would then have to be agreed between them.

@@ -1350,6 +1350,9 @@ class ShipmentService {
 
             // only need to create a transaction if the destination is a warehouse
             if (shipmentInstance.destination?.isWarehouse() && creditStockOnReceipt) {
+                // DSM decides whether the units are in this warehouse's custody before the inbound transaction
+                // is written (docs/plans/2026-11-01-dsm-custody-integration.md).
+                dsmCustodyService.requireEstablishedOnReceive(shipmentInstance.receipt)
                 createInboundTransaction(shipmentInstance)
             }
         } else {

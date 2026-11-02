@@ -86,6 +86,14 @@ class DsmHostClient {
         return router(method, body.toByteArray(), Route.INVOKE, "/ingress/quiet")
     }
 
+    /**
+     * A route whose arguments are not an arg pack but the bytes themselves (`tokens.addByAnchor` takes the
+     * anchor's text as the user pasted it), run without being recorded.
+     */
+    Envelope invokeRawArgsQuietly(String method, byte[] rawArgs) {
+        return router(method, rawArgs, Route.INVOKE, "/ingress/quiet", Args.RAW)
+    }
+
     /** A route that reads the account's state. */
     Envelope query(String method, Message body) {
         return query(method, body.toByteArray())
@@ -143,12 +151,19 @@ class DsmHostClient {
         INVOKE
     }
 
-    private Envelope router(String method, byte[] body, Route route, String path) {
-        ByteString args = ArgPack.newBuilder()
-                .setCodec(Codec.CODEC_PROTO)
-                .setBody(ByteString.copyFrom(body))
-                .build()
-                .toByteString()
+    static enum Args {
+        PACKED,
+        RAW
+    }
+
+    private Envelope router(String method, byte[] body, Route route, String path, Args shape = Args.PACKED) {
+        ByteString args = shape == Args.RAW
+                ? ByteString.copyFrom(body)
+                : ArgPack.newBuilder()
+                        .setCodec(Codec.CODEC_PROTO)
+                        .setBody(ByteString.copyFrom(body))
+                        .build()
+                        .toByteString()
         IngressRequest.Builder request = IngressRequest.newBuilder()
         if (route == Route.INVOKE) {
             request.setRouterInvoke(RouterInvokeOp.newBuilder().setMethod(method).setArgs(args))

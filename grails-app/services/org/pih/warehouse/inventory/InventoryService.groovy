@@ -21,6 +21,7 @@ import org.pih.warehouse.auth.AuthService
 import org.pih.warehouse.core.ConfigService
 import org.pih.warehouse.core.Constants
 import org.pih.warehouse.core.Location
+import org.pih.warehouse.dsm.DsmCustodyService
 import org.pih.warehouse.core.LocationGroup
 import org.pih.warehouse.core.Tag
 import org.pih.warehouse.core.User
@@ -63,6 +64,7 @@ class InventoryService implements ApplicationContextAware {
 
     RecordStockProductInventoryTransactionService recordStockProductInventoryTransactionService
     ProductAvailabilityService productAvailabilityService
+    DsmCustodyService dsmCustodyService
     ConfigService configService
     InventoryItemManager inventoryItemManager
     MessageLocalizer messageLocalizer
@@ -1527,6 +1529,9 @@ class InventoryService implements ApplicationContextAware {
                 return cmd
             }
 
+            // DSM first: at a DSM warehouse the counted difference is a burn or a credit from the registry.
+            dsmCustodyService.backStockChange(adjustmentTransaction)
+
             if (adjustmentTransaction.hasErrors() || !adjustmentTransaction.save()) {
                 adjustmentTransaction.errors.allErrors.each { error ->
                     cmd.errors.reject(
@@ -1969,6 +1974,9 @@ class InventoryService implements ApplicationContextAware {
 
             transaction.addToTransactionEntries(transactionEntry)
 
+            // DSM first: the adjustment is a burn or a credit from the registry at a DSM warehouse.
+            dsmCustodyService.backStockChange(transaction)
+
             if (!transaction.save()) {
                 throw new ValidationException("Error saving transaction", transaction.errors)
             }
@@ -2038,6 +2046,16 @@ class InventoryService implements ApplicationContextAware {
 
             // To prevent the product availability from being refreshed (we'll trigger it ourselves)
             transaction.disableRefresh = command.disableRefresh
+
+            // DSM decides whether the units move: between two warehouses that are both on DSM the units are
+            // transferred account to account, and the destination's account must hold them, before either side's
+            // transaction is written (docs/plans/2026-11-01-dsm-custody-integration.md).
+            if (!transaction.hasErrors()) {
+                dsmCustodyService.transferBetweenWarehouses(
+                        transferOut ? location : otherLocation,
+                        transferOut ? otherLocation : location,
+                        inventoryItem.product, quantity, transaction.transactionNumber)
+            }
 
             if (!transaction.hasErrors() && transaction.save()) {
 

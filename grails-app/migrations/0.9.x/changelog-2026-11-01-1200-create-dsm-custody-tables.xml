@@ -20,8 +20,9 @@
                 <constraints nullable="false" primaryKey="true"/>
             </column>
             <column name="location_id" type="CHAR(38)">
-                <constraints nullable="false" unique="true" uniqueConstraintName="dsm_warehouse_account_location_uniq"/>
+                <constraints unique="true" uniqueConstraintName="dsm_warehouse_account_location_uniq"/>
             </column>
+            <column name="label" type="VARCHAR(255)"/>
             <column name="ingress_origin" type="VARCHAR(255)">
                 <constraints nullable="false"/>
             </column>
@@ -129,27 +130,24 @@
             <column name="id" type="CHAR(38)">
                 <constraints nullable="false" primaryKey="true"/>
             </column>
-            <column name="shipment_id" type="CHAR(38)">
+            <column name="kind" type="VARCHAR(32)">
                 <constraints nullable="false"/>
             </column>
+            <column name="shipment_id" type="CHAR(38)"/>
             <column name="product_id" type="CHAR(38)">
                 <constraints nullable="false"/>
             </column>
             <column name="origin_id" type="CHAR(38)">
                 <constraints nullable="false"/>
             </column>
-            <column name="destination_id" type="CHAR(38)">
-                <constraints nullable="false"/>
-            </column>
+            <column name="destination_id" type="CHAR(38)"/>
             <column name="quantity" type="INT">
                 <constraints nullable="false"/>
             </column>
             <column name="memo" type="VARCHAR(256)">
                 <constraints nullable="false"/>
             </column>
-            <column name="origin_state_hash" type="CHAR(52)">
-                <constraints nullable="false" unique="true" uniqueConstraintName="dsm_custody_transfer_origin_state_uniq"/>
-            </column>
+            <column name="origin_state_hash" type="CHAR(52)"/>
             <column name="date_created" type="DATETIME">
                 <constraints nullable="false"/>
             </column>
@@ -158,8 +156,8 @@
             <column name="proven_amount" type="BIGINT"/>
             <column name="proven_position" type="BIGINT"/>
         </createTable>
-        <addUniqueConstraint tableName="dsm_custody_transfer" columnNames="shipment_id, product_id"
-                             constraintName="dsm_custody_transfer_shipment_product_uniq"/>
+        <addUniqueConstraint tableName="dsm_custody_transfer" columnNames="memo, product_id"
+                             constraintName="dsm_custody_transfer_memo_product_uniq"/>
         <addForeignKeyConstraint baseColumnNames="shipment_id" baseTableName="dsm_custody_transfer"
                                  constraintName="fk_dsm_custody_transfer_shipment" deferrable="false"
                                  initiallyDeferred="false" referencedColumnNames="id" referencedTableName="shipment"/>

@@ -42,6 +42,36 @@ class UrlMappings {
 
         // REST APIs with complex resource names or subresources
 
+        // DSM custody: the accounts, tokens and connections set up once, and the transfers the accounts made
+        "/api/dsm/accounts"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "accounts"]
+        }
+        "/api/dsm/accounts/warehouses"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "registerWarehouse"]
+        }
+        "/api/dsm/accounts/registries"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "registerRegistry"]
+        }
+        "/api/dsm/tokens"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "tokens", POST: "issueToken"]
+        }
+        "/api/dsm/links"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "links", POST: "pair"]
+        }
+        "/api/dsm/transfers"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "transfers"]
+        }
+        "/api/dsm/transfers/$id/proof"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "proveHoldings"]
+        }
+
         "/api/categories"(parseRequest: true) {
             controller = { "categoryApi" }
             action = [GET: "list", POST: "save"]

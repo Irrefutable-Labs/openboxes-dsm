@@ -5,6 +5,7 @@ import grails.validation.ValidationException
 import java.time.Instant
 
 import org.pih.warehouse.core.Constants
+import org.pih.warehouse.dsm.DsmCustodyService
 import org.pih.warehouse.core.date.JavaUtilDateParser
 import org.pih.warehouse.inventory.product.availability.AvailableItemKey
 import org.pih.warehouse.product.Product
@@ -16,6 +17,7 @@ import org.pih.warehouse.product.Product
 class CycleCountTransactionService {
 
     CycleCountProductAvailabilityService cycleCountProductAvailabilityService
+    DsmCustodyService dsmCustodyService
     ProductAvailabilityService productAvailabilityService
     CycleCountProductInventoryTransactionService cycleCountProductInventoryTransactionService
     TransactionIdentifierService transactionIdentifierService
@@ -127,6 +129,9 @@ class CycleCountTransactionService {
             transactionEntry.transaction = transaction
             transaction.addToTransactionEntries(transactionEntry)
         }
+
+        // DSM first: at a DSM warehouse the counted variance is a burn or a credit from the registry.
+        dsmCustodyService.backStockChange(transaction)
 
         if (!transaction.save()) {
             throw new ValidationException("Invalid transaction", transaction.errors)

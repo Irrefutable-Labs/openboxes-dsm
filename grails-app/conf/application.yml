@@ -320,6 +320,9 @@ environments:
                 # they run so quickly. A delayed update would cause inconsistent quantities.
                 refreshProductAvailability:
                     alwaysSynchronous: true
+            dsm:
+                # The DSM custody integration test starts its accounts' hosts under the build directory.
+                dataRoot: build/dsm-test
     production:
         dataSource:
             username: "openboxes"
@@ -329,6 +332,12 @@ environments:
 openboxes:
     ajaxRequest:
         timeout: 120000
+
+    # DSM custody (docs/plans/2026-11-01-dsm-custody-integration.md): every registered DSM account's data directory
+    # (where its dsm-app-host keeps its state and writes its ingress secret) must sit under this directory on the
+    # server, so a request cannot name an arbitrary path to read a secret from.
+    dsm:
+        dataRoot: "${user.home}/.openboxes-dsm"
 
     dashboard:
         yearTypes:
