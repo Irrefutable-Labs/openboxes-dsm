@@ -3,18 +3,17 @@ package org.pih.warehouse.dsm
 import org.pih.warehouse.core.Location
 
 /**
- * A DSM account this application acts through: a dsm-app-host process that holds the identity, reached through
- * the loopback protobuf ingress the host serves on this machine. OpenBoxes holds no DSM key; it asks the account
- * to act and reads what the account established.
+ * A DSM account this instance acts through: a dsm-app-host process that holds the identity, reached through the
+ * loopback protobuf ingress the host serves on this machine. OpenBoxes holds no DSM key; it asks the account to act
+ * and reads what the account established. Every account here belongs to the organization that runs this instance:
+ * another organization's account is known only as a device id on a DsmConnection.
  *
- * Two kinds, told apart by `location`:
+ * Two kinds, told apart by `location`, and never on one instance together, so release authority never shares a
+ * server with custody:
  * - a warehouse's account (`location` set): its balance of a product's token is the units in that warehouse's
  *   custody;
- * - a registry account (`location` null, `label` set): the organization's account that issues product tokens and
- *   holds the supply no warehouse has custody of yet. Units enter DSM custody by a transfer from the registry to
- *   the warehouse that took them in from outside DSM (a supplier's delivery, a count that found stock), and leave
- *   it by a burn at the warehouse (consumption, expiry, damage). A registry has no physical stock, so its balance
- *   never conflates with custody.
+ * - a registry account (`location` null, `label` set): it commits product tokens and holds the fixed supply no
+ *   warehouse has custody of yet. Its balance is capacity to admit, not physical stock.
  */
 class DsmWarehouseAccount {
 

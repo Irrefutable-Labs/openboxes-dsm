@@ -321,8 +321,9 @@ environments:
                 refreshProductAvailability:
                     alwaysSynchronous: true
             dsm:
-                # The DSM custody integration test starts its accounts' hosts under the build directory.
-                dataRoot: build/dsm-test
+                # The DSM custody integration test starts this instance's own hosts here; the other organizations'
+                # instances it starts each have a root of their own beside it.
+                dataRoot: build/dsm-test/org-a
     production:
         dataSource:
             username: "openboxes"
@@ -338,6 +339,9 @@ openboxes:
     # server, so a request cannot name an arbitrary path to read a secret from.
     dsm:
         dataRoot: "${user.home}/.openboxes-dsm"
+        registry:
+            # A release leaves a registry's account only after this many different operators approved it.
+            approvalsRequired: 2
 
     dashboard:
         yearTypes:

@@ -1,24 +1,14 @@
 package org.pih.warehouse.dsm
 
 import com.google.protobuf.ByteString
-import com.google.protobuf.Empty
 import dsm.types.proto.AmountDirection
-import dsm.types.proto.ConnectAppOfferRequestV1
-import dsm.types.proto.ConnectAppOfferV1
 import dsm.types.proto.ConnectAppRequestIntentV1
 import dsm.types.proto.ConnectAppStatusV1
-import dsm.types.proto.ConnectApproveRequestV1
 import dsm.types.proto.ConnectFact
 import dsm.types.proto.ConnectHoldingsV1
 import dsm.types.proto.ConnectOutcome
-import dsm.types.proto.ConnectPreviewRequestV1
-import dsm.types.proto.ConnectPreviewV1
 import dsm.types.proto.ConnectReplyV1
 import dsm.types.proto.ConnectRequestRefV1
-import dsm.types.proto.ConnectScopeKind
-import dsm.types.proto.ConnectScopeV1
-import dsm.types.proto.ConnectSessionStatus
-import dsm.types.proto.ConnectSessionV1
 import dsm.types.proto.Envelope
 import dsm.types.proto.OnlineTransferResponse
 import dsm.types.proto.OnlineTransferSmartRequest
@@ -26,46 +16,51 @@ import dsm.types.proto.StorageSyncRequest
 import dsm.types.proto.StorageSyncResponse
 import dsm.types.proto.TokenBurnRequest
 import dsm.types.proto.TokenBurnResponse
-import dsm.types.proto.TokenCreateRequest
-import dsm.types.proto.TokenCreateResponse
 import dsm.types.proto.TransactionInfo
 import dsm.types.proto.TransactionType
 import dsm.types.proto.VerifiedHoldingV1
-import grails.core.GrailsApplication
 import grails.gorm.transactions.Transactional
+import org.pih.warehouse.api.PartialReceipt
+import org.pih.warehouse.api.PartialReceiptItem
+import org.pih.warehouse.auth.AuthService
 import org.pih.warehouse.core.Constants
 import org.pih.warehouse.core.Location
+import org.pih.warehouse.core.User
 import org.pih.warehouse.dsm.DsmHostClient.Route
 import org.pih.warehouse.inventory.Transaction
 import org.pih.warehouse.inventory.TransactionCode
 import org.pih.warehouse.inventory.TransactionEntry
 import org.pih.warehouse.inventory.TransactionIdentifierService
 import org.pih.warehouse.product.Product
-import org.pih.warehouse.api.PartialReceipt
-import org.pih.warehouse.api.PartialReceiptItem
 import org.pih.warehouse.receiving.Receipt
 import org.pih.warehouse.receiving.ReceiptItem
 import org.pih.warehouse.shipping.Shipment
+import org.pih.warehouse.shipping.ShipmentIdentifierService
 import org.pih.warehouse.shipping.ShipmentItem
+import org.pih.warehouse.shipping.ShipmentType
 
 /**
- * Custody of inventory units on DSM, for warehouses that have a DSM account of their own
+ * Custody of inventory units on DSM, for this organization's own warehouses
  * (docs/plans/2026-11-01-dsm-custody-integration.md).
  *
- * A product's units are a DSM token of 0 decimals that a registry account (the organization's) committed; a
- * warehouse account's balance of it is the units in that warehouse's custody. Every OpenBoxes inventory
- * transaction at a DSM warehouse is backed by a DSM transition made before it is written:
- * - a shipment or stock transfer between two DSM warehouses is a transfer from the origin's account to the
- *   destination's, and the destination's inbound transaction waits for its own account to hold it accepted;
+ * A product's units are a DSM token of 0 decimals a registry committed; a warehouse account's balance of it is the
+ * units in that warehouse's custody. Every OpenBoxes inventory transaction at a DSM warehouse is backed by a DSM
+ * transition made before it is written:
+ * - a shipment is a transfer from the origin's account to the destination's device. The destination may be another
+ *   organization: this instance then knows it only as a device id on a Connect session, and what happens at the
+ *   other end is that organization's own business, on its own instance;
+ * - units a peer sent are taken in here from this account's own history, as a shipment record of this instance's
+ *   own, and received through the ordinary receiving workflow;
+ * - a stock transfer moves units between two accounts of this organization;
  * - units that enter custody from outside DSM (a receipt from a supplier, a count that found stock, a credit
- *   adjustment) are a transfer from the token's registry to the warehouse;
+ *   adjustment) are drawn from an admission the registry's operators approved (DsmAdmissionService);
  * - units that leave custody (consumption, expiry, damage, a count that found less) are burned at the warehouse.
  * The proof shown to others is a holdings proof the asking account verifies against the holder's root over their
- * DSM Connect session. Business records stay here; what goes to DSM is the token, the quantity and a memo naming
- * the OpenBoxes document, sealed to the two accounts.
+ * DSM Connect session. Business records stay on each organization's own instance; what goes to DSM is the token, the
+ * quantity and a memo naming the document, sealed to the two accounts.
  *
- * Nothing a host answers is taken as evidence: a send is recorded from the account's own history, a receipt
- * from the destination's, and holdings from the fact the asking account established (DSM Amendment A11).
+ * Nothing a host answers is taken as evidence: a send is recorded from the sending account's own history, a receipt
+ * from the receiving account's, and holdings from the fact the asking account established (DSM Amendment A11).
  */
 @Transactional
 class DsmCustodyService {
@@ -74,310 +69,141 @@ class DsmCustodyService {
     static final String MEMO_RECEIPT = "openboxes:receipt:"
     static final String MEMO_TRANSACTION = "openboxes:transaction:"
 
-    /** How long one DSM step may take before it is reported as not having happened (the DSM suites' own bound). */
-    static final long STEP_TIMEOUT_MS = 240_000L
-
-    static final long POLL_MS = 500L
-
     /** How many history rows one read of an account's history examines, newest first. */
     static final long HISTORY_ROWS = 1_000L
 
-    /** The longest display name an offer carries (DSM Connect, `MAX_DISPLAY_NAME`). */
-    static final int MAX_DISPLAY_NAME = 64
-
+    DsmAccountService dsmAccountService
+    DsmAdmissionService dsmAdmissionService
     TransactionIdentifierService transactionIdentifierService
-    GrailsApplication grailsApplication
+    ShipmentIdentifierService shipmentIdentifierService
+    AuthService authService
 
-    // ------------------------------------------------------------------ accounts
+    // Resolved at call time: these services call into this one.
+    def shipmentService
+    def inventoryService
 
-    DsmWarehouseAccount accountFor(Location location) {
-        return location ? DsmWarehouseAccount.findByLocation(location) : null
-    }
-
-    DsmHostClient clientFor(DsmWarehouseAccount account) {
-        return new DsmHostClient(account.ingressOrigin, new File(account.dataDir))
-    }
-
-    /**
-     * Give a warehouse its DSM account: the dsm-app-host running from `dataDir` on this machine, reached at
-     * `ingressOrigin`. The account's device id is read from the host's own record.
-     */
-    DsmWarehouseAccount registerAccount(Location location, String ingressOrigin, String dataDir) {
-        if (!location?.inventory) {
-            throw new DsmCustodyException(
-                    "${location?.name} has no inventory: only a warehouse that holds stock has a DSM account")
-        }
-        DsmWarehouseAccount existing = accountFor(location)
-        if (existing) {
-            throw new DsmCustodyException("${location.name} already has a DSM account, device ${existing.deviceId}")
-        }
-        return saveAccount(new DsmWarehouseAccount(location: location), ingressOrigin, dataDir)
-    }
-
-    /**
-     * A registry account: the organization's account that issues product tokens and holds the supply no warehouse
-     * has custody of yet.
-     */
-    DsmWarehouseAccount registerRegistry(String label, String ingressOrigin, String dataDir) {
-        if (!label?.trim()) {
-            throw new DsmCustodyException("a registry has a name")
-        }
-        return saveAccount(new DsmWarehouseAccount(label: label.trim()), ingressOrigin, dataDir)
-    }
-
-    /**
-     * The directory a registered account's data directory must sit under (`openboxes.dsm.dataRoot`): the host's
-     * ingress secret is read from the data directory, so a request may not name an arbitrary path.
-     */
-    File dataRoot() {
-        String configured = grailsApplication.config.getProperty("openboxes.dsm.dataRoot", String)
-        if (!configured?.trim()) {
-            throw new DsmCustodyException("openboxes.dsm.dataRoot is not configured: no DSM account can be registered")
-        }
-        return new File(configured.trim()).canonicalFile
-    }
-
-    private File confinedDataDir(String dataDir) {
-        if (!dataDir?.trim()) {
-            throw new DsmCustodyException("an account's data directory is required")
-        }
-        File root = dataRoot()
-        File dir = new File(dataDir.trim()).canonicalFile
-        String rootPath = root.path.endsWith(File.separator) ? root.path : root.path + File.separator
-        if (dir != root && !dir.path.startsWith(rootPath)) {
-            throw new DsmCustodyException(
-                    "an account's data directory must be under ${root} (openboxes.dsm.dataRoot); ${dir} is not")
-        }
-        return dir
-    }
-
-    private DsmWarehouseAccount saveAccount(DsmWarehouseAccount account, String ingressOrigin, String dataDir) {
-        File confined = confinedDataDir(dataDir)
-        if (!ingressOrigin?.trim()) {
-            throw new DsmCustodyException("an account's ingress origin is required")
-        }
-        DsmHostClient client
-        try {
-            client = new DsmHostClient(ingressOrigin.trim(), confined)
-        } catch (IllegalArgumentException refused) {
-            throw new DsmCustodyException(refused.message, refused)
-        }
-        String deviceId = Base32Crockford.encode(client.deviceId())
-        DsmWarehouseAccount held = DsmWarehouseAccount.findByDeviceId(deviceId)
-        if (held) {
-            throw new DsmCustodyException("the account at ${ingressOrigin} is already registered as ${held}")
-        }
-        account.ingressOrigin = ingressOrigin.trim()
-        account.dataDir = confined.path
-        account.deviceId = deviceId
-        account.save(failOnError: true, flush: true)
-        return account
-    }
-
-    // ------------------------------------------------------------------ tokens
-
-    /** The ticker a product's token is named by: its product code, as a DSM ticker (2 to 8 of A-Z, 0-9). */
-    static String tickerFor(Product product) {
-        String code = product.productCode?.trim()?.toUpperCase()
-        if (!code) {
-            throw new DsmCustodyException("product ${product.name} has no product code to name its DSM token by")
-        }
-        if (!(code ==~ /[A-Z0-9]{2,8}/)) {
-            throw new DsmCustodyException(
-                    "product code ${code} is not a DSM ticker: 2 to 8 characters, A-Z and 0-9 only")
-        }
-        return code
-    }
-
-    /**
-     * The token that stands for `product`'s units, committed by `issuer`: 0 decimals, `supply` units released to
-     * the issuer, transferable and burnable. The whole supply that will ever exist: a registry issues it large
-     * enough for every unit the organization will ever take into custody. Nothing about the product but its code
-     * (the ticker) goes into the policy.
-     */
-    DsmProductToken issueProductToken(DsmWarehouseAccount issuer, Product product, long supply) {
-        DsmProductToken already = DsmProductToken.findByProduct(product)
-        if (already) {
-            throw new DsmCustodyException(
-                    "product ${product.productCode} already stands for units on DSM as ${already.ticker} " +
-                            "(anchor ${already.policyAnchor}), issued by ${already.issuer}")
-        }
-        if (supply < 1) {
-            throw new DsmCustodyException("a token's supply is at least one unit, not ${supply}")
-        }
-        String ticker = tickerFor(product)
-        TokenCreateRequest request = TokenCreateRequest.newBuilder()
-                .setTicker(ticker)
-                .setAlias(ticker)
-                .setDecimals(0)
-                .setGenesisSupplyEntered(Long.toString(supply))
-                .setBurnEnabled(true)
-                .setTransferable(true)
-                .setThreshold(1)
-                .build()
-        Envelope envelope = clientFor(issuer).invoke("token.create", request)
-        TokenCreateResponse response = DsmHostClient
-                .expect("token.create", envelope, Envelope.PayloadCase.TOKEN_CREATE_RESPONSE)
-                .tokenCreateResponse
-        if (!response.success) {
-            throw new DsmCustodyException("token.create ${ticker}: ${response.message}")
-        }
-        byte[] anchor = response.policyAnchor.toByteArray()
-        if (anchor.length != 32) {
-            throw new DsmHostException("token.create", "the policy anchor is ${anchor.length} bytes, not 32")
-        }
-        DsmProductToken token = new DsmProductToken(
-                product: product,
-                issuer: issuer,
-                policyAnchor: Base32Crockford.encode(anchor),
-                ticker: response.ticker ?: ticker,
-                supply: supply,
-        )
-        token.save(failOnError: true, flush: true)
-        return token
-    }
-
-    DsmProductToken issueProductToken(Location issuer, Product product, long supply) {
-        return issueProductToken(requireAccount(issuer, "issue a token"), product, supply)
-    }
-
-    /**
-     * Two accounts that were never connected are connected before the first move between them: an online send
-     * reaches only a contact, and pairing (DSM Amendment A11) is how each side comes to hold the other as a
-     * verified contact. Both accounts are this organization's, so the destination's approval is this
-     * application's own step.
-     */
-    void ensureConnected(DsmWarehouseAccount origin, DsmWarehouseAccount destination) {
-        if (DsmWarehouseLink.findByOfferingAndAccepting(origin, destination)
-                || DsmWarehouseLink.findByOfferingAndAccepting(destination, origin)) {
-            return
-        }
-        pair(origin, destination)
-    }
-
-    /**
-     * Have `account` root `token`'s anchor: its host fetches the published policy, re-hashes it to the anchor and
-     * registers the token (`tokens.addByAnchor`), so a transfer of it can be accepted. Rooting an anchor the
-     * account already holds is the idempotent case on the host. Called before every move into an account.
-     */
-    void ensureRootedAt(DsmWarehouseAccount account, DsmProductToken token) {
-        // The route takes the anchor's own text as its arguments, not an arg pack.
-        Envelope envelope = clientFor(account).invokeRawArgsQuietly("tokens.addByAnchor", token.policyAnchor.getBytes("UTF-8"))
-        if (envelope.payloadCase == Envelope.PayloadCase.ERROR) {
-            throw new DsmCustodyException("${account} could not root ${token.ticker}: ${envelope.error.message}")
-        }
-    }
-
-    // ------------------------------------------------------------------ pairing (DSM Connect)
-
-    /**
-     * Connect two accounts (DSM Amendment A11): `offering`'s account makes a signed offer naming every product
-     * token's anchor and asking to prove holdings of them; `accepting`'s account reads the code, fetches the
-     * offer over TLS pinned by the code, approves it, and posts its signed accept to the offering account's
-     * relay. Each side then holds the other as a verified contact and the accepting side has rooted the anchors.
-     * The session is recorded once the offering account's own state holds it.
-     */
-    DsmWarehouseLink pairWarehouses(Location offering, Location accepting) {
-        return pair(requireAccount(offering, "offer a connection"), requireAccount(accepting, "accept a connection"))
-    }
-
-    DsmWarehouseLink pair(DsmWarehouseAccount offeringAccount, DsmWarehouseAccount acceptingAccount) {
-        if (offeringAccount.id == acceptingAccount.id) {
-            throw new DsmCustodyException("${offeringAccount} cannot connect to itself")
-        }
-        DsmWarehouseLink linked = DsmWarehouseLink.findByOfferingAndAccepting(offeringAccount, acceptingAccount)
-        if (linked) {
-            ConnectSessionV1 held = sessionHeldBy(offeringAccount, linked.sessionId)
-            if (held?.status == ConnectSessionStatus.CONNECT_SESSION_STATUS_CONNECTED) {
-                return linked
-            }
-            throw new DsmCustodyException(
-                    "${offeringAccount} and ${acceptingAccount} were connected as session ${linked.sessionId}, which " +
-                            "${offeringAccount} no longer holds as connected; remove the link to connect again")
-        }
-        List<DsmProductToken> tokens = DsmProductToken.list()
-        if (!tokens) {
-            throw new DsmCustodyException(
-                    "no product token has been issued yet: connect after issuing, so ${acceptingAccount} roots the " +
-                            "anchors when it approves")
-        }
-        List<ByteString> anchors = tokens.collect { DsmProductToken token ->
-            ByteString.copyFrom(Base32Crockford.decodeId32(token.policyAnchor, "the anchor of ${token.ticker}"))
-        }
-        String displayName = offeringAccount.location ? offeringAccount.location.name : offeringAccount.label
-        ConnectAppOfferRequestV1 offerRequest = ConnectAppOfferRequestV1.newBuilder()
-                .setDisplayName(displayName.take(MAX_DISPLAY_NAME))
-                .addScopes(ConnectScopeV1.newBuilder()
-                        .setKind(ConnectScopeKind.CONNECT_SCOPE_KIND_HOLDINGS)
-                        .addAllPolicyCommits(anchors))
-                .addAllTokenAnchors(anchors)
-                .build()
-        DsmHostClient offeringClient = clientFor(offeringAccount)
-        DsmHostClient acceptingClient = clientFor(acceptingAccount)
-        // The host names its own relay endpoint and certificate pin in the offer.
-        ConnectAppOfferV1 offer = reply(offeringClient.connect("connect.app.offer", offerRequest, Route.INVOKE),
-                ConnectReplyV1.ReplyCase.OFFER, "connect.app.offer").offer
-        ConnectPreviewV1 preview = reply(acceptingClient.connect("connect.preview",
-                ConnectPreviewRequestV1.newBuilder().setCode(offer.code).build(), Route.QUERY),
-                ConnectReplyV1.ReplyCase.PREVIEW, "connect.preview").preview
-        String offeredBy = Base32Crockford.encode(preview.appDeviceId.toByteArray())
-        if (offeredBy != offeringAccount.deviceId) {
-            throw new DsmCustodyException(
-                    "the offer at the code names account ${offeredBy}, not ${offeringAccount}'s ${offeringAccount.deviceId}")
-        }
-        ConnectSessionV1 approved = reply(acceptingClient.connect("connect.approve",
-                ConnectApproveRequestV1.newBuilder().setOfferDigest(preview.offerDigest).build(), Route.INVOKE),
-                ConnectReplyV1.ReplyCase.SESSION, "connect.approve").session
-        String sessionId = Base32Crockford.encode(approved.sessionId.toByteArray())
-        ConnectSessionV1 held = until("${offeringAccount} holds the session ${sessionId}") {
-            sessionHeldBy(offeringAccount, sessionId)
-        }
-        String peer = Base32Crockford.encode(held.peerDeviceId.toByteArray())
-        if (peer != acceptingAccount.deviceId) {
-            throw new DsmCustodyException(
-                    "session ${sessionId} at ${offeringAccount} names peer ${peer}, not ${acceptingAccount}'s ${acceptingAccount.deviceId}")
-        }
-        DsmWarehouseLink link = new DsmWarehouseLink(
-                offering: offeringAccount,
-                accepting: acceptingAccount,
-                sessionId: sessionId,
-                offerDigest: Base32Crockford.encode(preview.offerDigest.toByteArray()),
-        )
-        link.save(failOnError: true, flush: true)
-        return link
-    }
-
-    // ------------------------------------------------------------------ shipments
+    // ------------------------------------------------------------------ shipments going out
 
     /**
      * Before OpenBoxes records a shipment as sent: the custody transfer of each product's shipped units from the
-     * origin's account to the destination's. Nothing happens for a shipment between warehouses that are not on
-     * DSM, and nothing yet for a shipment from a warehouse that is not on DSM (its units enter custody when the
-     * destination receives them). A shipment from a DSM warehouse to a location without an account is refused:
-     * custody cannot leave DSM through a warehouse that has no account.
+     * origin's account to the destination's device. Nothing happens for a shipment from a warehouse that is not on
+     * this instance's DSM accounts. A shipment from a DSM warehouse to a location this account has no connection to
+     * is refused: custody cannot leave DSM through a warehouse that is not on it.
      *
      * @return the transfers recorded, one per product; empty when the origin is not on DSM
      * @throws DsmCustodyException when DSM refuses, or the shipment cannot be moved on DSM as it stands
      */
     List<DsmCustodyTransfer> releaseOnSend(Shipment shipment) {
-        DsmWarehouseAccount origin = accountFor(shipment.origin)
+        DsmWarehouseAccount origin = dsmAccountService.accountFor(shipment.origin)
         if (!origin) {
             return []
         }
-        DsmWarehouseAccount destination = accountFor(shipment.destination)
-        if (!destination) {
+        DsmConnection connection = dsmAccountService.connectionTo(origin, shipment.destination)
+        if (!connection) {
             throw new DsmCustodyException(
-                    "${shipment.origin?.name} is a DSM warehouse but ${shipment.destination?.name} has no DSM account: " +
-                            "custody cannot leave DSM to a warehouse that is not on it")
+                    "${shipment.origin?.name} is a DSM warehouse but ${shipment.destination?.name} has no DSM account " +
+                            "it is connected to: custody cannot leave DSM to a warehouse that is not on it")
         }
-        String memo = MEMO_SHIPMENT + shipmentName(shipment)
+        String memo = memoFor(shipment)
         List<DsmCustodyTransfer> transfers = []
         quantitiesByProduct(shipment).each { Product product, Integer quantity ->
-            transfers << moveUnits(origin, destination, tokenFor(product), quantity, memo,
+            transfers << moveUnits(origin, connection, dsmAccountService.tokenFor(product), quantity, memo,
                     DsmCustodyTransfer.KIND_SHIPMENT, shipment)
         }
         return transfers
     }
+
+    // ------------------------------------------------------------------ custody coming in from a peer
+
+    /**
+     * What peers have sent this organization's accounts that it has not yet made a shipment record of: each account's
+     * inbox taken in, then its own history read. A row counts only if it comes from a connected peer's warehouse and
+     * is of a token this organization adopted.
+     */
+    List<Map> inboundCustody() {
+        List<Map> inbound = []
+        DsmWarehouseAccount.findAllByLocationIsNotNull().each { DsmWarehouseAccount account ->
+            DsmHostClient client = dsmAccountService.clientFor(account)
+            syncInbox(client, account)
+            Map<List, Map> byDocument = [:]
+            client.history(HISTORY_ROWS, 0).each { TransactionInfo row ->
+                if (row.txType != TransactionType.TX_TYPE_ONLINE || row.direction != AmountDirection.AMOUNT_DIRECTION_CREDIT
+                        || !row.memo.startsWith(MEMO_SHIPMENT) || row.fromDeviceId.size() != 32) {
+                    return
+                }
+                String from = Base32Crockford.encode(row.fromDeviceId.toByteArray())
+                DsmConnection peer = DsmConnection.findByAccountAndPeerDeviceId(account, from)
+                DsmProductToken token = DsmProductToken.findByTicker(row.tokenId)
+                if (!peer?.peerLocation || !token || DsmWarehouseAccount.findByDeviceId(from)) {
+                    return
+                }
+                if (DsmCustodyTransfer.findByKindAndMemoAndProductAndPeerDeviceId(
+                        DsmCustodyTransfer.KIND_INBOUND, row.memo, token.product, from)) {
+                    return
+                }
+                Map document = byDocument.computeIfAbsent([from, row.memo]) {
+                    [memo: row.memo, peerDeviceId: from, originLocationId: peer.peerLocation.id,
+                     originName: peer.peerLocation.name, accountId: account.id,
+                     destinationLocationId: account.location.id, lines: []]
+                }
+                document.lines << [productId: token.product.id, productCode: token.product.productCode,
+                                   ticker: token.ticker, quantity: row.amount, transferId: row.id]
+            }
+            inbound.addAll(byDocument.values())
+        }
+        return inbound
+    }
+
+    /**
+     * Make this organization's own shipment record of what a peer sent under `memo`: origin is this instance's
+     * Location for the peer, destination is the account's warehouse, the lines are what the account's own history
+     * holds. It is shipped from here on, and received through the ordinary receiving workflow.
+     */
+    Shipment establishInbound(String peerDeviceId, String memo) {
+        Map document = inboundCustody().find { Map it -> it.memo == memo && it.peerDeviceId == peerDeviceId }
+        if (!document) {
+            throw new DsmCustodyException(
+                    "no account here holds units from ${peerDeviceId} under ${memo} that have not been taken in")
+        }
+        DsmWarehouseAccount account = DsmWarehouseAccount.get(document.accountId)
+        Location origin = Location.get(document.originLocationId)
+        User user = authService.currentUser
+        Shipment shipment = new Shipment(
+                name: "${origin.name}: ${memo.substring(MEMO_SHIPMENT.length())}".toString(),
+                origin: origin,
+                destination: account.location,
+                shipmentType: ShipmentType.get(Constants.DEFAULT_SHIPMENT_TYPE_ID),
+                expectedShippingDate: new Date(),
+                createdBy: user,
+                updatedBy: user,
+        )
+        shipment.shipmentNumber = shipmentIdentifierService.generate(shipment)
+        document.lines.each { Map line ->
+            Product product = Product.get(line.productId)
+            // The default lot: a line is received as whatever lots the receiving screen records it under.
+            shipment.addToShipmentItems(new ShipmentItem(product: product, quantity: line.quantity as Integer,
+                    inventoryItem: inventoryService.findOrCreateDefaultInventoryItem(product)))
+        }
+        shipment.save(failOnError: true, flush: true)
+        document.lines.each { Map line ->
+            new DsmCustodyTransfer(
+                    kind: DsmCustodyTransfer.KIND_INBOUND,
+                    shipment: shipment,
+                    product: Product.get(line.productId),
+                    account: account,
+                    peerDeviceId: peerDeviceId,
+                    quantity: line.quantity as Integer,
+                    memo: memo,
+                    dateEstablished: new Date(),
+                    destinationTransferId: line.transferId,
+            ).save(failOnError: true, flush: true)
+        }
+        // The peer's own books debited it; here it is only marked on its way, so it can be received.
+        shipmentService.sendShipment(shipment, null, user, account.location, new Date(), false)
+        return shipment
+    }
+
+    // ------------------------------------------------------------------ receipts
 
     /**
      * Before OpenBoxes records a receipt's inbound transaction (the v2 receiving workflow): see
@@ -406,51 +232,78 @@ class DsmCustodyService {
 
     /**
      * Before OpenBoxes records a receipt's inbound transaction at a DSM warehouse, per product received:
-     * - from a DSM warehouse: the destination's own account must hold the shipment's transfer as accepted (its
-     *   inbox taken in, the transfer verified against the origin's stored key and applied), read from the
-     *   destination account's history after a sync; never from the origin's word or OpenBoxes' record of the send;
-     * - from a location that is not on DSM: the units enter custody now, by a transfer of exactly the received
-     *   quantity from the token's registry to the destination, which the destination's account must then hold.
+     * - from a warehouse of this organization: the destination's own account must hold the shipment's transfer as
+     *   accepted, read from its own history after a sync;
+     * - from another organization's warehouse: the shipment must be this instance's record of custody the account
+     *   already holds (see {@link #establishInbound});
+     * - from a location that is not on DSM: the units must already have been admitted to this account, and are drawn
+     *   from the admission now.
+     * Receipts of one shipment add up: together they may not exceed what DSM moved.
      *
-     * @return the transfers established, one per product received; empty when the destination is not on DSM
-     * @throws DsmCustodyException when the destination's account does not hold a transfer, or more was received
-     *         than DSM moved
+     * @return the transitions established, one per product received; empty when the destination is not on DSM
+     * @throws DsmCustodyException when the account does not hold the units, or more was received than DSM moved
      */
     List<DsmCustodyTransfer> requireEstablishedOnReceive(Shipment shipment, Map<Product, Integer> received,
                                                          String receiptNumber) {
-        DsmWarehouseAccount destination = accountFor(shipment.destination)
+        DsmWarehouseAccount destination = dsmAccountService.accountFor(shipment.destination)
         if (!destination) {
             return []
         }
-        DsmWarehouseAccount origin = accountFor(shipment.origin)
-        if (!origin) {
-            // Custody enters DSM: the token's registry moves the received units to this warehouse.
+        DsmWarehouseAccount originAccount = dsmAccountService.accountFor(shipment.origin)
+        DsmConnection peer = dsmAccountService.connectionTo(destination, shipment.origin)
+        if (!originAccount && !peer) {
             String memo = MEMO_RECEIPT + (receiptNumber ?: shipmentName(shipment))
-            List<DsmCustodyTransfer> credited = []
-            received.each { Product product, Integer quantityReceived ->
-                credited << creditFromRegistry(destination, tokenFor(product), quantityReceived, memo)
+            return received.collect { Product product, Integer quantityReceived ->
+                dsmAdmissionService.drawAdmitted(destination, product, quantityReceived, memo)
             }
-            return credited
         }
-        List<DsmCustodyTransfer> established = []
-        received.each { Product product, Integer quantityReceived ->
-            DsmProductToken token = tokenFor(product)
-            String memo = MEMO_SHIPMENT + shipmentName(shipment)
-            DsmCustodyTransfer transfer = DsmCustodyTransfer.findByMemoAndProduct(memo, product)
-            if (!transfer) {
-                throw new DsmCustodyException(
-                        "shipment ${shipmentName(shipment)} was never moved on DSM for ${token.ticker}: " +
-                                "${destination} holds no custody of these units to receive")
+        return received.collect { Product product, Integer quantityReceived ->
+            DsmCustodyTransfer inbound = DsmCustodyTransfer.findByKindAndShipmentAndProduct(
+                    DsmCustodyTransfer.KIND_INBOUND, shipment, product)
+            if (!inbound && originAccount) {
+                inbound = acceptedFromOwnWarehouse(shipment, product, originAccount, destination)
             }
-            requireAcceptedAt(transfer)
-            if (quantityReceived > transfer.quantity) {
+            if (!inbound) {
                 throw new DsmCustodyException(
-                        "receipt records ${quantityReceived} ${token.ticker} but DSM moved ${transfer.quantity}: " +
+                        "shipment ${shipmentName(shipment)} is not custody ${destination} holds for ${product.productCode}: " +
                                 "${destination} cannot receive units it has no custody of")
             }
-            established << transfer
+            int total = inbound.quantityReceived + quantityReceived
+            if (total > inbound.quantity) {
+                throw new DsmCustodyException(
+                        "receipts record ${total} ${product.productCode} but DSM moved ${inbound.quantity}: " +
+                                "${destination} cannot receive units it has no custody of")
+            }
+            inbound.quantityReceived = total
+            inbound.save(failOnError: true, flush: true)
+            return inbound
         }
-        return established
+    }
+
+    /** A shipment between two of this organization's warehouses: the destination's own history must hold what was sent. */
+    private DsmCustodyTransfer acceptedFromOwnWarehouse(Shipment shipment, Product product,
+                                                        DsmWarehouseAccount origin, DsmWarehouseAccount destination) {
+        String memo = memoFor(shipment)
+        DsmCustodyTransfer sent = DsmCustodyTransfer.findByKindAndMemoAndProductAndPeerDeviceId(
+                DsmCustodyTransfer.KIND_SHIPMENT, memo, product, destination.deviceId)
+        if (!sent) {
+            return null
+        }
+        TransactionInfo accepted = awaitAccepted(destination, origin.deviceId, dsmAccountService.tokenFor(product),
+                sent.quantity, memo)
+        DsmCustodyTransfer inbound = new DsmCustodyTransfer(
+                kind: DsmCustodyTransfer.KIND_INBOUND,
+                shipment: shipment,
+                product: product,
+                account: destination,
+                peerDeviceId: origin.deviceId,
+                quantity: sent.quantity,
+                memo: memo,
+                dateEstablished: new Date(),
+                destinationTransferId: accepted.id,
+        )
+        inbound.save(failOnError: true, flush: true)
+        return inbound
     }
 
     // ------------------------------------------------------------------ stock transfers and other transactions
@@ -458,20 +311,23 @@ class DsmCustodyService {
     /**
      * Before OpenBoxes records a stock transfer between two warehouses that are both on DSM: the units move from
      * the origin's account to the destination's, and the destination's account must hold them before the two
-     * mirrored transactions are written. Nothing happens for a transfer within one warehouse or between
-     * warehouses that are not on DSM; one side on DSM and the other not is refused.
+     * mirrored transactions are written. A stock transfer writes both warehouses' inventory in this database, so both
+     * must be this organization's; to another organization's warehouse it is a shipment. Nothing happens for a
+     * transfer within one warehouse or between warehouses that are not on DSM; one side on DSM and the other not is
+     * refused.
      */
     DsmCustodyTransfer transferBetweenWarehouses(Location from, Location to, Product product, int quantity,
                                                  String transactionNumber) {
-        DsmWarehouseAccount origin = accountFor(from)
-        DsmWarehouseAccount destination = accountFor(to)
+        DsmWarehouseAccount origin = dsmAccountService.accountFor(from)
+        DsmWarehouseAccount destination = dsmAccountService.accountFor(to)
         if (!origin && !destination) {
             return null
         }
         if (!origin || !destination) {
             throw new DsmCustodyException(
                     "a stock transfer between ${from?.name} and ${to?.name} crosses DSM's edge: " +
-                            "${origin ? to?.name : from?.name} has no DSM account")
+                            "${origin ? to?.name : from?.name} has no DSM account on this instance; to another " +
+                            "organization's warehouse, send a shipment")
         }
         if (origin.id == destination.id) {
             return null
@@ -479,9 +335,20 @@ class DsmCustodyService {
         if (!transactionNumber?.trim()) {
             throw new DsmCustodyException("a stock transfer needs its transaction number before it moves on DSM")
         }
-        DsmCustodyTransfer transfer = moveUnits(origin, destination, tokenFor(product), quantity,
+        DsmConnection connection = DsmConnection.findByAccountAndPeerDeviceId(origin, destination.deviceId)
+        if (!connection) {
+            throw new DsmCustodyException(
+                    "${origin} has no connection to ${destination}: connect the two before moving units between them")
+        }
+        DsmProductToken token = dsmAccountService.tokenFor(product)
+        DsmCustodyTransfer transfer = moveUnits(origin, connection, token, quantity,
                 MEMO_TRANSACTION + transactionNumber.trim(), DsmCustodyTransfer.KIND_STOCK_TRANSFER, null)
-        requireAcceptedAt(transfer)
+        if (!transfer.dateEstablished) {
+            TransactionInfo accepted = awaitAccepted(destination, origin.deviceId, token, quantity, transfer.memo)
+            transfer.dateEstablished = new Date()
+            transfer.destinationTransferId = accepted.id
+            transfer.save(failOnError: true, flush: true)
+        }
         return transfer
     }
 
@@ -489,14 +356,14 @@ class DsmCustodyService {
      * Before OpenBoxes saves an inventory transaction at a DSM warehouse that is not a shipment's or a stock
      * transfer's: units that leave stock (a DEBIT type: consumption, expiry, damage, a debit adjustment; or a
      * negative adjustment) are burned at the warehouse, and units that enter stock (a CREDIT type with a positive
-     * quantity: a credit adjustment, a count that found more) are moved from the token's registry to the
-     * warehouse. Transactions of a count itself (INVENTORY, PRODUCT_INVENTORY) carry no change; the adjustment
-     * written with them does. Nothing happens at a warehouse that is not on DSM.
+     * quantity: a credit adjustment, a count that found more) must already have been admitted to it. Transactions of
+     * a count itself (INVENTORY, PRODUCT_INVENTORY) carry no change; the adjustment written with them does. Nothing
+     * happens at a warehouse that is not on DSM.
      *
-     * @return what was burned or credited, one record per product with a change
+     * @return what was burned or drawn, one record per product with a change
      */
     List<DsmCustodyTransfer> backStockChange(Transaction transaction) {
-        DsmWarehouseAccount account = accountFor(transaction.inventory?.warehouse)
+        DsmWarehouseAccount account = dsmAccountService.accountFor(transaction.inventory?.warehouse)
         if (!account) {
             return []
         }
@@ -521,14 +388,10 @@ class DsmCustodyService {
         }
         List<DsmCustodyTransfer> backed = []
         changes.each { Product product, Integer change ->
-            if (change == 0) {
-                return
-            }
-            DsmProductToken token = tokenFor(product)
             if (change < 0) {
-                backed << burn(account, token, -change, memo)
-            } else {
-                backed << creditFromRegistry(account, token, change, memo)
+                backed << burn(account, dsmAccountService.tokenFor(product), -change, memo)
+            } else if (change > 0) {
+                backed << dsmAdmissionService.drawAdmitted(account, product, change, memo)
             }
         }
         return backed
@@ -537,29 +400,29 @@ class DsmCustodyService {
     // ------------------------------------------------------------------ the holdings proof
 
     /**
-     * The proof a third party is shown: the destination's holdings of the product's token, proven by the
-     * destination's account and verified by the origin's against the destination's validated economic root over
-     * their Connect session (DSM Amendment A11). Recorded on the transfer once the origin's account holds the
-     * fact; an answer alone establishes nothing.
+     * The proof a third party is shown: the peer's holdings of the product's token, proven by the peer's account and
+     * verified by this one against the peer's validated economic root over their Connect session (DSM Amendment
+     * A11). Recorded on the transfer once this account holds the fact; an answer alone establishes nothing. This
+     * account must be the one that made the offer: the session's application side is the side that may ask.
      */
     DsmCustodyTransfer establishHoldingsProof(DsmCustodyTransfer transfer) {
-        if (!transfer.destination) {
-            throw new DsmCustodyException("a ${transfer.kind} has no destination whose holdings could be proven")
+        if (!transfer.peerDeviceId) {
+            throw new DsmCustodyException("a ${transfer.kind} has no peer whose holdings could be proven")
         }
-        DsmWarehouseLink link = DsmWarehouseLink.findByOfferingAndAccepting(transfer.origin, transfer.destination)
-        if (!link) {
+        DsmConnection connection = DsmConnection.findByAccountAndPeerDeviceId(transfer.account, transfer.peerDeviceId)
+        if (connection?.side != DsmConnection.SIDE_OFFERED) {
             throw new DsmCustodyException(
-                    "${transfer.origin} has no DSM Connect session to ${transfer.destination}: connect the two " +
-                            "before asking for a holdings proof")
+                    "${transfer.account} made no offer to ${transfer.peerDeviceId}: only the side that offered a " +
+                            "session may ask over it")
         }
-        DsmProductToken token = tokenFor(transfer.product)
+        DsmProductToken token = dsmAccountService.tokenFor(transfer.product)
         ByteString anchor = ByteString.copyFrom(Base32Crockford.decodeId32(token.policyAnchor, "the anchor"))
         ConnectAppRequestIntentV1 intent = ConnectAppRequestIntentV1.newBuilder()
-                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(link.sessionId, "the session id")))
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(connection.sessionId, "the session id")))
                 .setHoldings(ConnectHoldingsV1.newBuilder().addPolicyCommits(anchor))
                 .build()
-        ConnectAppStatusV1 proven = askAndAwait(link, intent,
-                "${transfer.destination} proves its ${token.ticker} to ${transfer.origin}") { ConnectAppStatusV1 status ->
+        ConnectAppStatusV1 proven = askAndAwait(transfer.account, intent,
+                "${connection} proves its ${token.ticker} to ${transfer.account}") { ConnectAppStatusV1 status ->
             status.fact == ConnectFact.CONNECT_FACT_HOLDINGS
         }
         VerifiedHoldingV1 holding = proven.holdingsList.find { VerifiedHoldingV1 h -> h.policyCommit == anchor }
@@ -576,39 +439,36 @@ class DsmCustodyService {
     // ------------------------------------------------------------------ the moves
 
     /**
-     * Move `quantity` of `token` from `origin` to `destination` with `memo`, once: the origin account's own
-     * history decides whether it already sent this move (a retry after a failed OpenBoxes save), the destination
-     * roots the anchor first so it can accept, and the record is written from the account's answer.
+     * Move `quantity` of `token` from `origin` to the peer of `connection` with `memo`, once: the origin account's own
+     * history decides whether it already sent this move (a retry after a failed OpenBoxes save), and the record is
+     * written from the account's answer.
      */
-    private DsmCustodyTransfer moveUnits(DsmWarehouseAccount origin, DsmWarehouseAccount destination,
+    private DsmCustodyTransfer moveUnits(DsmWarehouseAccount origin, DsmConnection connection,
                                          DsmProductToken token, int quantity, String memo, String kind,
                                          Shipment shipment) {
         if (quantity < 1) {
             throw new DsmCustodyException("${memo}: nothing to move (${quantity} ${token.ticker})")
         }
-        DsmCustodyTransfer recorded = DsmCustodyTransfer.findByMemoAndProduct(memo, token.product)
+        String peer = connection.peerDeviceId
+        DsmCustodyTransfer recorded = DsmCustodyTransfer.findByKindAndMemoAndProductAndPeerDeviceId(kind, memo, token.product, peer)
         if (recorded) {
-            if (recorded.quantity != quantity || recorded.origin.id != origin.id || recorded.destination?.id != destination.id) {
+            if (recorded.quantity != quantity || recorded.account.id != origin.id) {
                 throw new DsmCustodyException(
-                        "${memo} already moved ${recorded.quantity} ${token.ticker} from ${recorded.origin} to " +
-                                "${recorded.destination} on DSM; it now asks for ${quantity} from ${origin} to " +
-                                "${destination}, which DSM has not established")
+                        "${memo} already moved ${recorded.quantity} ${token.ticker} from ${recorded.account} to " +
+                                "${connection} on DSM; it now asks for ${quantity} from ${origin}, which DSM has not established")
             }
             return recorded
         }
-        DsmHostClient originClient = clientFor(origin)
+        DsmHostClient originClient = dsmAccountService.clientFor(origin)
         // Sent already, but not recorded: the account's own history is the record of what it sent.
-        TransactionInfo sent = findTransfer(originClient.history(HISTORY_ROWS, 0), origin, destination, token,
+        TransactionInfo sent = findTransfer(originClient.history(HISTORY_ROWS, 0), origin.deviceId, peer, token,
                 quantity, memo, AmountDirection.AMOUNT_DIRECTION_DEBIT)
         String originStateHash
         if (sent) {
             originStateHash = Base32Crockford.encode(sent.txHash.toByteArray())
         } else {
-            ensureConnected(origin, destination)
-            ensureRootedAt(destination, token)
             OnlineTransferSmartRequest request = OnlineTransferSmartRequest.newBuilder()
-                    .setRecipientDeviceId(ByteString.copyFrom(
-                            Base32Crockford.decodeId32(destination.deviceId, "the destination's device id")))
+                    .setRecipientDeviceId(ByteString.copyFrom(Base32Crockford.decodeId32(peer, "the peer's device id")))
                     .setAmount(Integer.toString(quantity))
                     .setTokenId(token.ticker)
                     .setMemo(memo)
@@ -619,7 +479,7 @@ class DsmCustodyService {
             } catch (DsmHostException refused) {
                 // The account refused the send (an overspend, a recipient it cannot reach): DSM's own reason.
                 throw new DsmCustodyException(
-                        "DSM refused to move ${quantity} ${token.ticker} from ${origin} to ${destination} for ${memo}: " +
+                        "DSM refused to move ${quantity} ${token.ticker} from ${origin} to ${connection} for ${memo}: " +
                                 refused.message, refused)
             }
             OnlineTransferResponse response = DsmHostClient
@@ -627,7 +487,7 @@ class DsmCustodyService {
                     .onlineTransferResponse
             if (!response.success) {
                 throw new DsmCustodyException(
-                        "DSM refused to move ${quantity} ${token.ticker} from ${origin} to ${destination} for ${memo}: " +
+                        "DSM refused to move ${quantity} ${token.ticker} from ${origin} to ${connection} for ${memo}: " +
                                 response.message)
             }
             byte[] stateHash = response.transactionHash.v.toByteArray()
@@ -640,8 +500,8 @@ class DsmCustodyService {
                 kind: kind,
                 shipment: shipment,
                 product: token.product,
-                origin: origin,
-                destination: destination,
+                account: origin,
+                peerDeviceId: peer,
                 quantity: quantity,
                 memo: memo,
                 originStateHash: originStateHash,
@@ -650,34 +510,14 @@ class DsmCustodyService {
         return transfer
     }
 
-    /** Units entering custody: moved from the token's registry to `warehouse`, and held there before this returns. */
-    private DsmCustodyTransfer creditFromRegistry(DsmWarehouseAccount warehouse, DsmProductToken token,
-                                                  int quantity, String memo) {
-        DsmWarehouseAccount registry = token.issuer
-        if (!registry.registry) {
-            throw new DsmCustodyException(
-                    "${token.ticker} was issued by the warehouse ${registry}, not by a registry: units cannot enter " +
-                            "custody from outside DSM, because a warehouse's balance is its custody and a policy's " +
-                            "supply is fixed at creation; issue the product's token from a registry account")
-        }
-        if (registry.id == warehouse.id) {
-            throw new DsmCustodyException("the registry ${registry} holds no stock to take in")
-        }
-        DsmCustodyTransfer credit = moveUnits(registry, warehouse, token, quantity, memo,
-                DsmCustodyTransfer.KIND_REGISTRY_CREDIT, null)
-        requireAcceptedAt(credit)
-        return credit
-    }
-
     /** Units leaving custody: burned at `warehouse` under the token's policy (`token.burn`). */
     private DsmCustodyTransfer burn(DsmWarehouseAccount warehouse, DsmProductToken token, int quantity, String memo) {
-        DsmCustodyTransfer recorded = DsmCustodyTransfer.findByMemoAndProduct(memo, token.product)
+        DsmCustodyTransfer recorded = DsmCustodyTransfer.findByKindAndMemoAndProduct(DsmCustodyTransfer.KIND_BURN, memo, token.product)
         if (recorded) {
-            if (recorded.kind != DsmCustodyTransfer.KIND_BURN || recorded.quantity != quantity
-                    || recorded.origin.id != warehouse.id) {
+            if (recorded.quantity != quantity || recorded.account.id != warehouse.id) {
                 throw new DsmCustodyException(
-                        "${memo} already backed ${recorded.quantity} ${token.ticker} as a ${recorded.kind} at " +
-                                "${recorded.origin}; it now asks to burn ${quantity} at ${warehouse}")
+                        "${memo} already burned ${recorded.quantity} ${token.ticker} at ${recorded.account}; it now " +
+                                "asks to burn ${quantity} at ${warehouse}")
             }
             return recorded
         }
@@ -688,7 +528,7 @@ class DsmCustodyService {
                 .build()
         Envelope envelope
         try {
-            envelope = clientFor(warehouse).invoke("token.burn", request)
+            envelope = dsmAccountService.clientFor(warehouse).invoke("token.burn", request)
         } catch (DsmHostException refused) {
             throw new DsmCustodyException(
                     "DSM refused to burn ${quantity} ${token.ticker} at ${warehouse} for ${memo}: ${refused.message}",
@@ -704,7 +544,7 @@ class DsmCustodyService {
         DsmCustodyTransfer burned = new DsmCustodyTransfer(
                 kind: DsmCustodyTransfer.KIND_BURN,
                 product: token.product,
-                origin: warehouse,
+                account: warehouse,
                 quantity: quantity,
                 memo: memo,
                 dateEstablished: new Date(),
@@ -714,47 +554,21 @@ class DsmCustodyService {
     }
 
     /**
-     * The destination's own account must hold `transfer` as accepted: its inbox taken in now, then its history
-     * read for a credit of exactly the units from the origin's device, of the product's token, carrying the memo.
-     * The memo travels in the sealed terms the signed operation commits to, so a row that carries it was sent by
-     * the origin for this move. Waits up to the step bound: the destination's poller and the storage set are
-     * doing the work.
+     * `account`'s own history must hold the credit: its inbox taken in now, then a row of exactly the units from
+     * `fromDevice`, of the product's token, carrying the memo. The memo travels in the sealed terms the signed
+     * operation commits to, so a row that carries it was sent for this move. Waits up to the step bound.
      */
-    private void requireAcceptedAt(DsmCustodyTransfer transfer) {
-        if (transfer.dateEstablished) {
-            return
+    private TransactionInfo awaitAccepted(DsmWarehouseAccount account, String fromDevice, DsmProductToken token,
+                                          int quantity, String memo) {
+        DsmHostClient client = dsmAccountService.clientFor(account)
+        return DsmSteps.until("${account} holds ${quantity} ${token.ticker} from ${fromDevice} (${memo})") {
+            syncInbox(client, account)
+            findTransfer(client.history(HISTORY_ROWS, 0), fromDevice, account.deviceId, token, quantity, memo,
+                    AmountDirection.AMOUNT_DIRECTION_CREDIT)
         }
-        DsmProductToken token = tokenFor(transfer.product)
-        DsmHostClient destinationClient = clientFor(transfer.destination)
-        TransactionInfo accepted = until(
-                "${transfer.destination} holds ${transfer.quantity} ${token.ticker} from ${transfer.origin} (${transfer.memo})") {
-            syncInbox(destinationClient, transfer.destination)
-            findTransfer(destinationClient.history(HISTORY_ROWS, 0), transfer.origin, transfer.destination, token,
-                    transfer.quantity, transfer.memo, AmountDirection.AMOUNT_DIRECTION_CREDIT)
-        }
-        transfer.dateEstablished = new Date()
-        transfer.destinationTransferId = accepted.id
-        transfer.save(failOnError: true, flush: true)
     }
 
     // ------------------------------------------------------------------ helpers
-
-    private DsmWarehouseAccount requireAccount(Location location, String what) {
-        DsmWarehouseAccount account = accountFor(location)
-        if (!account) {
-            throw new DsmCustodyException("${location?.name} has no DSM account and cannot ${what}")
-        }
-        return account
-    }
-
-    private static DsmProductToken tokenFor(Product product) {
-        DsmProductToken token = DsmProductToken.findByProduct(product)
-        if (!token) {
-            throw new DsmCustodyException(
-                    "product ${product.productCode} (${product.name}) has no DSM token: its units are not on DSM")
-        }
-        return token
-    }
 
     static String memoFor(Shipment shipment) {
         return MEMO_SHIPMENT + shipmentName(shipment)
@@ -778,18 +592,18 @@ class DsmCustodyService {
     }
 
     /**
-     * The online transfer among `rows` that moved `quantity` of `token` from `origin` to `destination` with
-     * `memo`, in `direction` as the reading account sees it, or null.
+     * The online transfer among `rows` that moved `quantity` of `token` between the two devices with `memo`, in
+     * `direction` as the reading account sees it, or null.
      */
-    private static TransactionInfo findTransfer(List<TransactionInfo> rows, DsmWarehouseAccount origin,
-                                                DsmWarehouseAccount destination, DsmProductToken token,
-                                                int quantity, String memo, AmountDirection direction) {
+    private static TransactionInfo findTransfer(List<TransactionInfo> rows, String fromDevice, String toDevice,
+                                                DsmProductToken token, int quantity, String memo,
+                                                AmountDirection direction) {
         return rows.find { TransactionInfo row ->
             row.txType == TransactionType.TX_TYPE_ONLINE &&
                     row.direction == direction &&
                     row.fromDeviceId.size() == 32 &&
-                    Base32Crockford.encode(row.fromDeviceId.toByteArray()) == origin.deviceId &&
-                    Base32Crockford.encode(row.toDeviceId.toByteArray()) == destination.deviceId &&
+                    Base32Crockford.encode(row.fromDeviceId.toByteArray()) == fromDevice &&
+                    Base32Crockford.encode(row.toDeviceId.toByteArray()) == toDevice &&
                     row.tokenId == token.ticker &&
                     row.amount == quantity &&
                     row.memo == memo
@@ -814,28 +628,20 @@ class DsmCustodyService {
         }
     }
 
-    private ConnectSessionV1 sessionHeldBy(DsmWarehouseAccount account, String sessionId) {
-        List<ConnectSessionV1> sessions = reply(clientFor(account).connect("connect.app.sessions",
-                Empty.getDefaultInstance(), Route.QUERY), ConnectReplyV1.ReplyCase.SESSIONS,
-                "connect.app.sessions").sessions.sessionsList
-        return sessions.find { ConnectSessionV1 s -> Base32Crockford.encode(s.sessionId.toByteArray()) == sessionId }
-    }
-
     /**
-     * Ask the accepting side of `link` for `intent` over the session and wait until the offering account's own
-     * status of the request satisfies `done`. A declined or failed request is reported with the reason the status
-     * carries.
+     * Ask the peer of `asking`'s session for `intent` and wait until this account's own status of the request
+     * satisfies `done`. A declined or failed request is reported with the reason the status carries.
      */
-    private ConnectAppStatusV1 askAndAwait(DsmWarehouseLink link, ConnectAppRequestIntentV1 intent, String what,
+    private ConnectAppStatusV1 askAndAwait(DsmWarehouseAccount asking, ConnectAppRequestIntentV1 intent, String what,
                                            Closure<Boolean> done) {
-        DsmHostClient client = clientFor(link.offering)
-        ConnectRequestRefV1 made = reply(client.connect("connect.app.request", intent, Route.INVOKE),
+        DsmHostClient client = dsmAccountService.clientFor(asking)
+        ConnectRequestRefV1 made = DsmSteps.reply(client.connect("connect.app.request", intent, Route.INVOKE),
                 ConnectReplyV1.ReplyCase.REQUEST, "connect.app.request").request
         ConnectRequestRefV1 ref = ConnectRequestRefV1.newBuilder()
                 .setSessionId(made.sessionId)
                 .setSeq(made.seq)
                 .build()
-        return until(what) {
+        return DsmSteps.until(what) {
             Envelope envelope = client.invokeQuietly("connect.app.status", ref)
             ConnectAppStatusV1 status = DsmHostClient
                     .expect("connect.app.status", envelope, Envelope.PayloadCase.CONNECT_REPLY)
@@ -848,28 +654,6 @@ class DsmCustodyService {
                 throw new DsmCustodyException("${what}: request ${made.seq} ${status.outcome}: ${status.reason}")
             }
             return null
-        }
-    }
-
-    private static ConnectReplyV1 reply(ConnectReplyV1 reply, ConnectReplyV1.ReplyCase wanted, String method) {
-        if (reply.replyCase != wanted) {
-            throw new DsmHostException(method, "the route answered ${reply.replyCase}, not ${wanted}")
-        }
-        return reply
-    }
-
-    /** `probe`'s first non-null answer within the step bound, or a refusal naming `what` did not happen. */
-    private static <T> T until(String what, Closure<T> probe) {
-        long deadline = System.currentTimeMillis() + STEP_TIMEOUT_MS
-        while (true) {
-            T found = probe()
-            if (found != null) {
-                return found
-            }
-            if (System.currentTimeMillis() >= deadline) {
-                throw new DsmCustodyException("${what}: not within ${STEP_TIMEOUT_MS / 1000} s")
-            }
-            Thread.sleep(POLL_MS)
         }
     }
 }

@@ -968,6 +968,12 @@ tasks.withType(Test) {
     // https://github.com/testcontainers/testcontainers-java/pull/11216
     systemProperty 'api.version', dockerApiVersion
 
+    // The DSM custody integration test starts other organizations' instances of this application as processes of
+    // their own, each with its own database, from the classpath the test itself runs on.
+    doFirst {
+        systemProperty 'openboxes.test.classpath', classpath.asPath
+    }
+
     systemProperty 'geb.build.reportsDir', reporting.file('geb/integrationTest')
     systemProperty 'geb.env', System.getProperty('geb.env')
     systemProperty 'webdriver.chrome.driver', System.getProperty('webdriver.chrome.driver')

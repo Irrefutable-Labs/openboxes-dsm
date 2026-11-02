@@ -42,7 +42,8 @@ class UrlMappings {
 
         // REST APIs with complex resource names or subresources
 
-        // DSM custody: the accounts, tokens and connections set up once, and the transfers the accounts made
+        // DSM custody: each organization's own accounts, tokens and sessions, its admissions or release decisions,
+        // the custody peers sent it, and what its accounts established
         "/api/dsm/accounts"(parseRequest: true) {
             controller = { "dsmCustodyApi" }
             action = [GET: "accounts"]
@@ -59,9 +60,49 @@ class UrlMappings {
             controller = { "dsmCustodyApi" }
             action = [GET: "tokens", POST: "issueToken"]
         }
-        "/api/dsm/links"(parseRequest: true) {
+        "/api/dsm/tokens/adoptions"(parseRequest: true) {
             controller = { "dsmCustodyApi" }
-            action = [GET: "links", POST: "pair"]
+            action = [POST: "adoptToken"]
+        }
+        "/api/dsm/connections"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "connections"]
+        }
+        "/api/dsm/connections/offers"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "offerConnection"]
+        }
+        "/api/dsm/connections/accepts"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "acceptConnection"]
+        }
+        "/api/dsm/connections/confirmations"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "confirmConnection"]
+        }
+        "/api/dsm/admissions"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "admissions", POST: "requestAdmission"]
+        }
+        "/api/dsm/releases"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "releases"]
+        }
+        "/api/dsm/releases/decisions"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "releaseDecisions"]
+        }
+        "/api/dsm/releases/approvals"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "approveRelease"]
+        }
+        "/api/dsm/releases/declines"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "declineRelease"]
+        }
+        "/api/dsm/inbound"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "inbound", POST: "establishInbound"]
         }
         "/api/dsm/transfers"(parseRequest: true) {
             controller = { "dsmCustodyApi" }

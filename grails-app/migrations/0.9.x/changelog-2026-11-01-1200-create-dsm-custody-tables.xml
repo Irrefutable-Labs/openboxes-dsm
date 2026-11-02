@@ -4,9 +4,10 @@
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog/1.9 http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-1.9.xsd">
 
     <!--
-    DSM custody (docs/plans/2026-11-01-dsm-custody-integration.md): each warehouse's own DSM account, the token
-    that stands for a product's units, the DSM Connect session between two warehouses, and the record of each
-    custody transfer a shipment made. See the domain classes in org.pih.warehouse.dsm.
+    DSM custody (docs/plans/2026-11-01-dsm-custody-integration.md): this organization's own DSM accounts, the token
+    that stands for a product's units, each account's own record of its Connect sessions, its custody transitions,
+    its admission requests, and a registry's record of its release decisions. See the domain classes in
+    org.pih.warehouse.dsm.
     -->
 
     <changeSet author="cryptskii" id="011120261200-0">
@@ -57,18 +58,14 @@
             <column name="product_id" type="CHAR(38)">
                 <constraints nullable="false" unique="true" uniqueConstraintName="dsm_product_token_product_uniq"/>
             </column>
-            <column name="issuer_id" type="CHAR(38)">
-                <constraints nullable="false"/>
-            </column>
+            <column name="issuer_device_id" type="CHAR(52)"/>
             <column name="policy_anchor" type="CHAR(52)">
                 <constraints nullable="false" unique="true" uniqueConstraintName="dsm_product_token_anchor_uniq"/>
             </column>
             <column name="ticker" type="VARCHAR(8)">
                 <constraints nullable="false"/>
             </column>
-            <column name="supply" type="BIGINT">
-                <constraints nullable="false"/>
-            </column>
+            <column name="supply" type="BIGINT"/>
             <column name="date_created" type="DATETIME">
                 <constraints nullable="false"/>
             </column>
@@ -76,30 +73,34 @@
         <addForeignKeyConstraint baseColumnNames="product_id" baseTableName="dsm_product_token"
                                  constraintName="fk_dsm_product_token_product" deferrable="false"
                                  initiallyDeferred="false" referencedColumnNames="id" referencedTableName="product"/>
-        <addForeignKeyConstraint baseColumnNames="issuer_id" baseTableName="dsm_product_token"
-                                 constraintName="fk_dsm_product_token_issuer" deferrable="false"
-                                 initiallyDeferred="false" referencedColumnNames="id"
-                                 referencedTableName="dsm_warehouse_account"/>
     </changeSet>
 
     <changeSet author="cryptskii" id="011120261200-2">
         <preConditions onFail="MARK_RAN">
             <not>
-                <tableExists tableName="dsm_warehouse_link"/>
+                <tableExists tableName="dsm_connection"/>
             </not>
         </preConditions>
-        <createTable tableName="dsm_warehouse_link">
+        <createTable tableName="dsm_connection">
             <column name="id" type="CHAR(38)">
                 <constraints nullable="false" primaryKey="true"/>
             </column>
-            <column name="offering_id" type="CHAR(38)">
+            <column name="account_id" type="CHAR(38)">
                 <constraints nullable="false"/>
             </column>
-            <column name="accepting_id" type="CHAR(38)">
+            <column name="peer_device_id" type="CHAR(52)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="peer_location_id" type="CHAR(38)"/>
+            <column name="peer_registry" type="BIT(1)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="peer_name" type="VARCHAR(255)"/>
+            <column name="side" type="VARCHAR(16)">
                 <constraints nullable="false"/>
             </column>
             <column name="session_id" type="CHAR(52)">
-                <constraints nullable="false" unique="true" uniqueConstraintName="dsm_warehouse_link_session_uniq"/>
+                <constraints nullable="false"/>
             </column>
             <column name="offer_digest" type="CHAR(52)">
                 <constraints nullable="false"/>
@@ -108,16 +109,15 @@
                 <constraints nullable="false"/>
             </column>
         </createTable>
-        <addUniqueConstraint tableName="dsm_warehouse_link" columnNames="offering_id, accepting_id"
-                             constraintName="dsm_warehouse_link_pair_uniq"/>
-        <addForeignKeyConstraint baseColumnNames="offering_id" baseTableName="dsm_warehouse_link"
-                                 constraintName="fk_dsm_warehouse_link_offering" deferrable="false"
+        <addUniqueConstraint tableName="dsm_connection" columnNames="account_id, peer_device_id"
+                             constraintName="dsm_connection_peer_uniq"/>
+        <addForeignKeyConstraint baseColumnNames="account_id" baseTableName="dsm_connection"
+                                 constraintName="fk_dsm_connection_account" deferrable="false"
                                  initiallyDeferred="false" referencedColumnNames="id"
                                  referencedTableName="dsm_warehouse_account"/>
-        <addForeignKeyConstraint baseColumnNames="accepting_id" baseTableName="dsm_warehouse_link"
-                                 constraintName="fk_dsm_warehouse_link_accepting" deferrable="false"
-                                 initiallyDeferred="false" referencedColumnNames="id"
-                                 referencedTableName="dsm_warehouse_account"/>
+        <addForeignKeyConstraint baseColumnNames="peer_location_id" baseTableName="dsm_connection"
+                                 constraintName="fk_dsm_connection_peer_location" deferrable="false"
+                                 initiallyDeferred="false" referencedColumnNames="id" referencedTableName="location"/>
     </changeSet>
 
     <changeSet author="cryptskii" id="011120261200-3">
@@ -137,11 +137,14 @@
             <column name="product_id" type="CHAR(38)">
                 <constraints nullable="false"/>
             </column>
-            <column name="origin_id" type="CHAR(38)">
+            <column name="account_id" type="CHAR(38)">
                 <constraints nullable="false"/>
             </column>
-            <column name="destination_id" type="CHAR(38)"/>
+            <column name="peer_device_id" type="CHAR(52)"/>
             <column name="quantity" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantity_received" type="INT">
                 <constraints nullable="false"/>
             </column>
             <column name="memo" type="VARCHAR(256)">
@@ -156,21 +159,146 @@
             <column name="proven_amount" type="BIGINT"/>
             <column name="proven_position" type="BIGINT"/>
         </createTable>
-        <addUniqueConstraint tableName="dsm_custody_transfer" columnNames="memo, product_id"
-                             constraintName="dsm_custody_transfer_memo_product_uniq"/>
+        <addUniqueConstraint tableName="dsm_custody_transfer" columnNames="kind, memo, product_id, peer_device_id"
+                             constraintName="dsm_custody_transfer_memo_uniq"/>
         <addForeignKeyConstraint baseColumnNames="shipment_id" baseTableName="dsm_custody_transfer"
                                  constraintName="fk_dsm_custody_transfer_shipment" deferrable="false"
                                  initiallyDeferred="false" referencedColumnNames="id" referencedTableName="shipment"/>
         <addForeignKeyConstraint baseColumnNames="product_id" baseTableName="dsm_custody_transfer"
                                  constraintName="fk_dsm_custody_transfer_product" deferrable="false"
                                  initiallyDeferred="false" referencedColumnNames="id" referencedTableName="product"/>
-        <addForeignKeyConstraint baseColumnNames="origin_id" baseTableName="dsm_custody_transfer"
-                                 constraintName="fk_dsm_custody_transfer_origin" deferrable="false"
+        <addForeignKeyConstraint baseColumnNames="account_id" baseTableName="dsm_custody_transfer"
+                                 constraintName="fk_dsm_custody_transfer_account" deferrable="false"
                                  initiallyDeferred="false" referencedColumnNames="id"
                                  referencedTableName="dsm_warehouse_account"/>
-        <addForeignKeyConstraint baseColumnNames="destination_id" baseTableName="dsm_custody_transfer"
-                                 constraintName="fk_dsm_custody_transfer_destination" deferrable="false"
+    </changeSet>
+
+    <changeSet author="cryptskii" id="011120261200-4">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="dsm_admission"/>
+            </not>
+        </preConditions>
+        <createTable tableName="dsm_admission">
+            <column name="id" type="CHAR(38)">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="version" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="account_id" type="CHAR(38)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="product_id" type="CHAR(38)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantity" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantity_drawn" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reference" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="memo" type="VARCHAR(256)"/>
+            <column name="session_id" type="CHAR(52)"/>
+            <column name="seq" type="BIGINT"/>
+            <column name="status" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reason" type="VARCHAR(1024)"/>
+            <column name="credit_transfer_id" type="VARCHAR(255)">
+                <constraints unique="true" uniqueConstraintName="dsm_admission_credit_uniq"/>
+            </column>
+            <column name="requested_by_id" type="CHAR(38)"/>
+            <column name="date_created" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
+            <column name="date_established" type="DATETIME"/>
+        </createTable>
+        <addForeignKeyConstraint baseColumnNames="account_id" baseTableName="dsm_admission"
+                                 constraintName="fk_dsm_admission_account" deferrable="false"
                                  initiallyDeferred="false" referencedColumnNames="id"
                                  referencedTableName="dsm_warehouse_account"/>
+        <addForeignKeyConstraint baseColumnNames="product_id" baseTableName="dsm_admission"
+                                 constraintName="fk_dsm_admission_product" deferrable="false"
+                                 initiallyDeferred="false" referencedColumnNames="id" referencedTableName="product"/>
+        <addForeignKeyConstraint baseColumnNames="requested_by_id" baseTableName="dsm_admission"
+                                 constraintName="fk_dsm_admission_requested_by" deferrable="false"
+                                 initiallyDeferred="false" referencedColumnNames="id" referencedTableName="user"/>
+    </changeSet>
+
+    <changeSet author="cryptskii" id="011120261200-5">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="dsm_release_approval"/>
+            </not>
+        </preConditions>
+        <createTable tableName="dsm_release_approval">
+            <column name="id" type="CHAR(38)">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="session_id" type="CHAR(52)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="seq" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="summary" type="VARCHAR(1024)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="approver_id" type="CHAR(38)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="date_created" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="dsm_release_approval" columnNames="session_id, seq, approver_id"
+                             constraintName="dsm_release_approval_uniq"/>
+        <addForeignKeyConstraint baseColumnNames="approver_id" baseTableName="dsm_release_approval"
+                                 constraintName="fk_dsm_release_approval_approver" deferrable="false"
+                                 initiallyDeferred="false" referencedColumnNames="id" referencedTableName="user"/>
+    </changeSet>
+
+    <changeSet author="cryptskii" id="011120261200-6">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="dsm_release_decision"/>
+            </not>
+        </preConditions>
+        <createTable tableName="dsm_release_decision">
+            <column name="id" type="CHAR(38)">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="session_id" type="CHAR(52)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="seq" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="requester_device_id" type="CHAR(52)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="summary" type="VARCHAR(1024)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="decision" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="line" type="VARCHAR(1024)"/>
+            <column name="decided_by_id" type="CHAR(38)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="date_created" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="dsm_release_decision" columnNames="session_id, seq"
+                             constraintName="dsm_release_decision_uniq"/>
+        <addForeignKeyConstraint baseColumnNames="decided_by_id" baseTableName="dsm_release_decision"
+                                 constraintName="fk_dsm_release_decision_decided_by" deferrable="false"
+                                 initiallyDeferred="false" referencedColumnNames="id" referencedTableName="user"/>
     </changeSet>
 </databaseChangeLog>
