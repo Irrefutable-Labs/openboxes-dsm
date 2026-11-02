@@ -192,7 +192,62 @@ later option for serialized goods and needs nothing in this design changed, only
 Only steps 4 and 5 touch existing OpenBoxes code, each at one line. Steps 2, 3 and 6 are new services and
 one admin action each.
 
-## 7. Tests: real, two app-host accounts, DSM's own code
+## 7. What was built (2026-11-02, option A as the owner chose)
+
+| Piece | Where |
+| --- | --- |
+| The DSM wire, compiled to Java at build time | `src/main/proto/dsm_app.proto` (vendored from the DSM revision in `src/main/proto/DSM_REVISION`), `com.google.protobuf` Gradle plugin 0.8.10 with protoc `protobufVersion` (3.21.11, the runtime the tree already forces) |
+| The ingress client | `src/main/groovy/org/pih/warehouse/dsm/DsmHostClient.groovy` (frames requests, reads answers, decides nothing), `Base32Crockford.groovy` (DSM's encoder mirrored), `DsmHostException`, `DsmCustodyException` |
+| OpenBoxes' records | `grails-app/domain/org/pih/warehouse/dsm/`: `DsmWarehouseAccount` (a location's host), `DsmProductToken` (a product's policy anchor), `DsmWarehouseLink` (a Connect session between two warehouses), `DsmCustodyTransfer` (one shipment's transfer of one product); migration `grails-app/migrations/0.9.x/changelog-2026-11-01-1200-create-dsm-custody-tables.xml` |
+| The service | `grails-app/services/org/pih/warehouse/dsm/DsmCustodyService.groovy`: `registerAccount`, `issueProductToken`, `pairWarehouses`, `rootTokenAtPeer`, `releaseOnSend`, `requireEstablishedOnReceive`, `establishHoldingsProof` |
+| The two hooks | `ShipmentService.sendShipment` calls `releaseOnSend` before anything is marked shipped; `ReceiptV2Service.completeReceipt` calls `requireEstablishedOnReceive` before anything on the receipt changes |
+| The storage set for tests | `dsm/fleet/`: a Rust crate that includes the SDK's own node harness from the DSM checkout beside this one and runs it as a process |
+| The test | `src/integration-test/groovy/org/pih/warehouse/slice/spec/dsm/DsmCustodyShipmentSpec.groovy`, with `common/dsm/DsmTestFleet` and `DsmTestHost` starting the processes. Eight features, all passing on 2026-11-02 against the storage set, two fresh accounts and a Testcontainers MySQL: accounts, token and pairing; the send (transfer recorded, TRANSFER_OUT written after it, 90 at A, 10 at B); the receipt (established from B's own history, TRANSFER_IN written after it); the holdings proof (10 proven at B's position); an over-ship refused by DSM with nothing recorded; a shipment to a location without an account refused; a second shipment; a receipt of more units than DSM moved refused |
+
+How the pieces decide:
+
+- A send: `releaseOnSend` first reads the origin account's own history for a debit of the shipped units to the
+  destination with the shipment's memo (a retry after a failed OpenBoxes save finds the transfer it already
+  sent); otherwise `wallet.sendSmart`. The record keeps the origin's state hash after the send. The destination
+  must have rooted the product anchor beforehand: pairing roots the anchors of every token the offering
+  warehouse issued at approval, and `rootTokenAtPeer` asks for a later one under the `ACCEPT_ISSUED` scope.
+- A receipt: `requireEstablishedOnReceive` runs the destination account's `storage.sync` and reads its
+  `wallet.history` for a credit of exactly the units sent, from the origin's device, of the product's token,
+  carrying the shipment's memo. The memo travels in the sealed terms the signed operation commits to, so a row
+  that carries it was sent by the origin for this shipment. The three hashes involved are different objects
+  (the sender's state hash, the sender's row hash, the recipient's row named by its recomputed submission id),
+  so nothing is matched by hash across the two sides. A receipt recording more units than DSM moved is refused.
+- The proof: `establishHoldingsProof` asks over the Connect session and records the amount only when the
+  origin account's `connect.app.status` holds `CONNECT_FACT_HOLDINGS`, which the SDK sets only after the
+  Sparse Merkle path recomputed the destination's validated root.
+- Warehouses with no `DsmWarehouseAccount` are untouched: both hooks return at once when neither side is on
+  DSM. A shipment with exactly one side on DSM is refused with the reason (custody can neither enter nor leave
+  DSM through a warehouse that has no account).
+
+### Building and running
+
+```bash
+# DSM at origin/main beside this checkout, with the two binaries the tests start
+git -C ../dsm worktree add --detach ../dsm-main origin/main
+(cd ../dsm-main && cargo build --release --locked -p dsm-app-host)
+(cd dsm/fleet && CARGO_TARGET_DIR=../../../dsm-main/target cargo build --release)
+
+# Java 8 (Grails 3.3.16), Docker (Testcontainers MySQL), a Postgres server with the named database created
+createdb -h 127.0.0.1 dsm_openboxes_demo
+export JAVA_HOME=<a JDK 8>
+export DSM_FLEET_BIN=$PWD/../dsm-main/target/release/openboxes-dsm-fleet
+export DSM_APP_HOST_BIN=$PWD/../dsm-main/target/release/dsm-app-host
+export DSM_TEST_DATABASE_URL='postgresql://<user>@127.0.0.1:5432/dsm_openboxes_demo?sslmode=disable'
+./gradlew integrationTest --tests 'org.pih.warehouse.slice.spec.dsm.DsmCustodyShipmentSpec' -x npm_run_bundle -x npmInstall
+```
+
+Running the demo by hand is the same shape: one `dsm-app-host` per warehouse against the network's pinned set
+(`--env-config dsm_client/frontend/public/dsm_env_config.toml` in the DSM repo), each warehouse registered with
+`registerAccount`, the product's token issued with `issueProductToken`, the two connected with
+`pairWarehouses`, then the ordinary OpenBoxes send and receive screens. There is no admin screen for the three
+setup calls yet; they are service calls.
+
+## 8. The test plan as written before building
 
 - A Rust helper crate in this fork (`dsm/fleet/`) that includes `dsm_sdk/src/test_support/nodes.rs` by
   `#[path]` from the DSM checkout beside this one and depends on `dsm_storage_node` and `dsm_sdk` by path:
@@ -210,7 +265,7 @@ one admin action each.
   3.3.16 and the project's CI run on Java 8 only; 17, 21 and 24 are installed). Without Java 8 the Grails
   side cannot be compiled or tested here.
 
-## 8. Holes left visible, not stubbed
+## 9. Holes left visible, not stubbed
 
 - Issuance from outside DSM at any warehouse other than the token's creator (a second warehouse receiving
   the same product from a supplier) would need either one policy per receiving warehouse or a policy whose
@@ -220,3 +275,10 @@ one admin action each.
 - Multiple products per shipment: one transfer per product per shipment; the design allows it, the demo
   carries one.
 - Consumption, disposal, adjustments and cycle counts as burns or as nothing on DSM. Not decided.
+- Returns (the destination paying units back under a `PAY` scope) and partial-receipt discrepancies. Not built;
+  a receipt of fewer units than DSM moved is recorded in OpenBoxes as it is, and DSM keeps the moved units at the
+  destination.
+- An admin screen for `registerAccount`, `issueProductToken` and `pairWarehouses`. Service calls only.
+- `rootTokenAtPeer` is not called by `releaseOnSend`: a token issued after pairing must be rooted at the
+  destination by that call before the first shipment of it, or the destination's account holds the transfer
+  unaccepted and the receipt is refused with that reason.

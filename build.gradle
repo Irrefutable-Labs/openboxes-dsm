@@ -75,6 +75,10 @@ plugins {
     // resolve a Windows-specific build issue
     id 'com.virgo47.ClasspathJar' version '1.0.0'
 
+    // compile the DSM protobuf schema (src/main/proto/dsm_app.proto) to Java: the wire the DSM custody
+    // integration speaks to each warehouse's dsm-app-host. 0.8.10 is the last release that runs on Gradle 4.x (0.8.11+ use Gradle 5.6 APIs).
+    id 'com.google.protobuf' version '0.8.10'
+
     // enable `grails gradle autoLintGradle`
     id 'nebula.lint' version '17.8.0'
 
@@ -337,7 +341,7 @@ configurations {
              * consume their API's directly.
              */
             force 'com.google.errorprone:error_prone_annotations:2.19.1'  // use consistent version
-            force 'com.google.protobuf:protobuf-java:3.21.11'  // security patch
+            force "com.google.protobuf:protobuf-java:${protobufVersion}"  // security patch; also the DSM wire runtime
             force 'commons-io:commons-io:2.12.0'  // security patch
             force 'commons-validator:commons-validator:1.7'  // security patch
             force 'jline:jline:2.14.6'  // use consistent version
@@ -408,6 +412,16 @@ node {
 
 processResources {
     dependsOn 'npm_run_bundle'
+}
+
+/*
+ * The DSM wire (protobuf, never JSON on a DSM path): dsm_app.proto is vendored from the DSM repository at the
+ * revision recorded in src/main/proto/DSM_REVISION and compiled with the protoc that matches the runtime above.
+ */
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${protobufVersion}"
+    }
 }
 
 repositories {
@@ -489,6 +503,8 @@ dependencies {
 
     // security patch
     compile 'com.google.code.gson:gson:2.10.1'
+
+    compile "com.google.protobuf:protobuf-java:${protobufVersion}"  // the DSM wire (src/main/proto/dsm_app.proto)
 
     // expose javax.annotation.Nullable, com.google.common.base.Enums, etc.
     compile 'com.google.guava:guava:32.0.1-jre'
