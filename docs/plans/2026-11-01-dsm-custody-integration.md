@@ -389,5 +389,18 @@ Read from DSM's proto and specs, not yet exercised: who may build a release (A12
 verdict by the wallet that branch pays), how a person proves a seat they hold through a vault, and how an application
 reads a vault's terms.
 
+- **Open: sign-in is not bound to the browser.** A connected wallet cannot answer a new code, so a returning person is
+  asked over their session with a holdings proof. It proves the phone answered, but not which browser asked, and the phone
+  says "prove holdings", not "sign in". Whoever types a person's name is signed in if that person approves. Requests per
+  wallet are limited. A real fix needs a Connect request that carries a code to match, which is a DSM change.
+
+- **Open: the three DSM builds must agree.** A host and the wallets connecting to it must be built from the same code
+  (`connect.app.accept` compares signed bytes), and both must write in a form the storage fleet accepts. Measured
+  2026-11-02 on the beta fleet with two fresh accounts side by side: `main` (`ad831f53e`) claimed from the faucet on its
+  first attempt with 0 route-write failures; `fix/beta-requirements-completion` (`e78fd9208`, the build on the phones,
+  including that worktree's uncommitted changes) failed all 6 attempts with `no reserve generation won in 8 attempts` and
+  192 `borne out false` route-write failures. The wallet on the phone failed the same way. A wallet with no economic
+  position cannot answer a holdings proof, so it cannot sign in, and it cannot pay for a token.
+
 The presentation follows Wildstate's overlay: one timeline marking what is WEB2 and what is DSM, over a realistic scenario
 with sample USD values, and running on the beta storage fleet rather than a local one.

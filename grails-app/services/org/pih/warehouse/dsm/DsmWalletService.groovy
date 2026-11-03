@@ -45,6 +45,10 @@ class DsmWalletService {
     static final String OUTCOME_REVOKE = "revoke"
     static final String OUTCOME_OWNER_REVOKE = "revoke-by-owner"
 
+    /** How often one wallet can be asked to sign in, so nobody can flood a person's phone with requests. */
+    private static final long SIGN_IN_ASK_INTERVAL_MS = 30000L
+    private static final Map<String, Long> LAST_SIGN_IN_ASK = new java.util.concurrent.ConcurrentHashMap<>()
+
     DsmAccountService dsmAccountService
 
     // ------------------------------------------------------------------ connecting
@@ -126,7 +130,11 @@ class DsmWalletService {
      * session it already has: a holdings proof no grant covers, which waits on the person's phone (Apps, Waiting) until
      * they approve it there. The wallet signs the proof and the account verifies it, so only that phone can answer.
      *
-     * @return the session and the request's number; null for a name no wallet here is bound to
+     * The request does not bind to the browser that made it, and the phone says "prove holdings", not "sign in": someone
+     * who types another person's name is signed in if that person approves. DSM's holdings request has no field to carry
+     * a code to match. See section 10 of docs/plans/2026-11-01-dsm-custody-integration.md.
+     *
+     * @return the session and the request's number; null for a name no wallet here is bound to, or one asked too recently
      */
     Map askToSignIn(String username) {
         User user = username?.trim() ? User.findByUsernameOrEmail(username.trim(), username.trim()) : null
@@ -134,6 +142,12 @@ class DsmWalletService {
         if (!wallet) {
             return null
         }
+        long now = System.currentTimeMillis()
+        Long last = LAST_SIGN_IN_ASK.get(wallet.id)
+        if (last != null && now - last < SIGN_IN_ASK_INTERVAL_MS) {
+            return null
+        }
+        LAST_SIGN_IN_ASK.put(wallet.id, now)
         // DSM requires a holdings request to name a token, and every wallet can prove what it holds of ERA, the
         // network's own token. What is proven is who answered, not how much they hold.
         BalanceGetResponse era = balanceRows(wallet.account).find { BalanceGetResponse row -> row.symbol == "ERA" }
