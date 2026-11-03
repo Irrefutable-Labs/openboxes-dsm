@@ -1,5 +1,6 @@
 package org.pih.warehouse.receiving
 
+import org.pih.warehouse.dsm.DsmCustodyService
 import grails.testing.gorm.DataTest
 import grails.testing.services.ServiceUnitTest
 import org.pih.warehouse.api.PartialReceipt
@@ -34,6 +35,7 @@ class ReceiptServiceSpec extends Specification implements ServiceUnitTest<Receip
     }
 
     void setup() {
+        service.dsmCustodyService = Stub(DsmCustodyService)
         shipmentService = Mock(ShipmentService) {
             createShipmentEvent(_, _, _, _) >> void
         }

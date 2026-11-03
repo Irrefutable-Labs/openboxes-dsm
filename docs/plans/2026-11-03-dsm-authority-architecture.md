@@ -14,7 +14,13 @@ operational application. Synchronizing OpenBoxes is never what settles anything.
 | Wallet connect, phone sign-in, password refused once bound | Built; *measured* |
 | Capped seat token, release on phone approval, seat in a vault, revocation by the authority alone, reassignment | Built; *measured* |
 | Revoked person's open session gets 403 on every write; new sign-in gets `NO_SEAT` | Built; *measured*, once OpenBoxes is told |
-| Noticing a revocation without someone pressing Check | **Not built.** Dana can act until `refreshSeat` runs |
+| Noticing a revocation without someone pressing Check | Built; *measured*: locked out 20 s after the verdict went final |
+| Refusing a person whose seat cannot be verified, or who holds only a role written into the database | Built; *measured* |
+| Stock transaction written, changed or deleted at a DSM warehouse outside a DSM-backed flow | Refused; *measured* through GORM, with a grant as the control |
+| Record dated before a stock count | Refused before DSM moves; *measured* for a shipment, read only for receipts and stock changes |
+| Rollback of a shipment DSM moved | Refused, pointing to a return shipment; *measured* for shipments, read only for receipts |
+| Generic API writes to stock, shipments, receipts, users, roles and DSM tables | Refused; *measured* for transactions, users and seats |
+| Stock decrease | Burns units on a burn-enabled token; refused without changes on a burn-off token; *measured* |
 | Stock refused beyond the registry-approved admission | Built; *measured* |
 | Shipment moves units on DSM; hospital's account holds them before its books do | Built; *measured* |
 | Receipt refused above what DSM moved | Built; *measured*, surfaced as HTTP 500 |
@@ -166,9 +172,9 @@ carriers are their own organizations. Until the device tree is built, accountabi
 
 ## 6. Order of work
 
-1. **Close the holes (OpenBoxes only).** Gate the generic API and deletes; make rollback a forward DSM move or refuse it; cover
-   baselines; refuse a ship date before the product's latest baseline; seat watcher and operation gate; a clean refusal instead
-   of HTTP 500; tokens with burn on.
+1. **Close the holes (OpenBoxes only). Done, with the gaps listed in section 7.** One fail-closed rule now covers stock writes
+   at a DSM warehouse (`DsmStockWrites`), with the generic API gated, rollback refused, backdating refused before DSM moves, a
+   seat watcher, an operation gate, clean refusals, and tokens with burn on.
 2. **Reconcile.** The invariant in section 2 running continuously, with discrepancies shown.
 3. **Finish the demo:** second wallet, sample USD scenario, overlay, recording steps.
 4. **DSM's signing request,** if the owner approves it.
@@ -177,8 +183,17 @@ carriers are their own organizations. Until the device tree is built, accountabi
 
 ## 7. Known limits
 
+- The stock guard sits on GORM hooks. Raw SQL, HQL bulk writes and direct database edits do not reach it: only the integrity
+  layer can catch those. The superuser console runs arbitrary code, and so can take a grant.
+- Paths that write stock with no DSM flow, such as requisition issue, packing-list import and bulk importers, are now refused
+  at a DSM warehouse rather than backed by DSM. That is deliberate, but those features do not work there until backed.
+- Not done from section 3: DSM moving before `save()` has no compensation, beyond a retry recognizing its own move by memo;
+  impersonation still records the impersonated user; editing `TransactionType` through its own screens is not gated.
+- A seat holder is refused once no reading is newer than 120 s (`openboxes.dsm.seat.maxVerifiedAgeSeconds`). So a network
+  outage locks seat holders out of OpenBoxes, which conflicts with working offline and needs a decision before offline work.
+- An owner's wallet holds no seat, so nothing here revokes the owner.
+- Northgate's AMX500 books still overstate by 40. The refusals stop it recurring; correcting it needs step 2.
 - A database superuser who also controls the application host can act between commits.
 - OpenBoxes' write-path counts come from a static reading, and the generic API findings were not executed.
 - What triggered the first retry on the jammed reserve cell is still unknown.
-- Northgate's books are wrong now, and need a signed correction, not an edit.
 - Clearing the fleet left Wildstate's account unusable until it is rebuilt with the new pins.

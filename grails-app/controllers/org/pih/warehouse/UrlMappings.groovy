@@ -1298,6 +1298,7 @@ class UrlMappings {
         "500"(controller: "errors", action: "handleException")
         "500"(controller: "errors", action: "handleNotFound", exception: ObjectNotFoundException)
         "500"(controller: "errors", action: "handleValidationErrors", exception: ValidationException)
+        "500"(controller: "errors", action: "handleDsmRefusal", exception: org.pih.warehouse.dsm.DsmCustodyException)
         "500"(controller: "errors", action: "handleUnauthorized", exception: AuthenticationException)
         "500"(controller: "errors", action: "handleConstraintViolation", exception: SQLIntegrityConstraintViolationException)
         "/"(controller: "dashboard", action: "index")

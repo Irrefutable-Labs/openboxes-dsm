@@ -360,4 +360,8 @@
         <addForeignKeyConstraint baseColumnNames="location_id" baseTableName="dsm_seat" constraintName="fk_dsm_seat_location" referencedColumnNames="id" referencedTableName="location"/>
         <addForeignKeyConstraint baseColumnNames="account_id" baseTableName="dsm_seat" constraintName="fk_dsm_seat_account" referencedColumnNames="id" referencedTableName="dsm_warehouse_account"/>
     </changeSet>
+    <changeSet author="cryptskii" id="021120261800-3">
+        <preConditions onFail="MARK_RAN"><not><columnExists tableName="dsm_seat" columnName="date_verified"/></not></preConditions>
+        <addColumn tableName="dsm_seat"><column name="date_verified" type="DATETIME"/></addColumn>
+    </changeSet>
 </databaseChangeLog>

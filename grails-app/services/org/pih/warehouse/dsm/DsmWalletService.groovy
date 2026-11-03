@@ -125,6 +125,10 @@ class DsmWalletService {
         List<DsmSeat> standing = DsmSeat.findAllByHolderAndStatus(wallet, DsmSeat.STATUS_ASSIGNED).findAll { DsmSeat seat ->
             vaultStands(seat)
         }
+        standing.each { DsmSeat seat ->
+            seat.dateVerified = new Date()
+            seat.save(failOnError: true, flush: true)
+        }
         syncRoles(wallet)
         if (!standing || !wallet.user) {
             return null
@@ -308,6 +312,7 @@ class DsmWalletService {
                 verdictCell: Base32Crockford.encode(created.verdictCell.toByteArray()),
                 externalCommitment: Base32Crockford.encode(created.externalCommitment.toByteArray()),
         )
+        seat.dateVerified = new Date()
         seat.save(failOnError: true, flush: true)
         if (!holder.user) {
             holder.user = newUser(holder, location, firstName, lastName)
@@ -345,8 +350,19 @@ class DsmWalletService {
             seat.dateReturned = new Date()
             seat.save(failOnError: true, flush: true)
             syncRoles(seat.holder)
+        } else if (seat.status == DsmSeat.STATUS_ASSIGNED && verdict.state == EscrowVerdictState.ESCROW_VERDICT_STATE_NONE) {
+            seat.dateVerified = new Date()
+            seat.save(failOnError: true, flush: true)
         }
         return [state: verdict.state.name().replace("ESCROW_VERDICT_STATE_", ""), outcome: outcome]
+    }
+
+    List<String> standingSeatIds() {
+        return DsmSeat.findAllByStatus(DsmSeat.STATUS_ASSIGNED)*.id
+    }
+
+    Map refreshSeatById(String id) {
+        return refreshSeat(DsmSeat.get(id))
     }
 
     /** The vault itself, walked to its head on the storage nodes: Active, one unit, under this seat's commitment, undecided. */

@@ -1,5 +1,6 @@
 package org.pih.warehouse.inventory
 
+import org.pih.warehouse.dsm.DsmStockWrites
 import grails.gorm.transactions.Transactional
 import grails.validation.ValidationException
 import java.time.Instant
@@ -163,6 +164,8 @@ class CycleCountTransactionService {
             // quantity to be represented by a separate adjustment transaction. It's important to note that the quantity
             // values for this transaction will be a pure copy of QoH in product availability, NOT the quantityOnHand of
             // the cycle count items.
+            // A count's baseline, written before its variance goes through DSM.
+            DsmStockWrites.grant("a cycle count")
             Transaction transaction = cycleCountProductInventoryTransactionService.createInventoryBaselineTransaction(
                     cycleCount.facility,
                     cycleCount,

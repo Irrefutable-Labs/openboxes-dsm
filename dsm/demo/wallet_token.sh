@@ -1,8 +1,9 @@
 #!/bin/bash
-# Create a token through the real wallet's wizard: wallet_token.sh SERIAL_PART TICKER "NAME" SUPPLY "DESCRIPTION". Prints its anchor.
+# Create a token through the real wallet's wizard: wallet_token.sh SERIAL_PART TICKER "NAME" SUPPLY "DESCRIPTION" [burn]. Prints
+# its anchor. A product's token needs "burn": a stock decrease at a DSM warehouse burns its units, and the policy cannot change later.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-P="$1"; TICKER="$2"; NAME="$3"; SUPPLY="$4"; DESC="$5"
+P="$1"; TICKER="$2"; NAME="$3"; SUPPLY="$4"; DESC="$5"; BURN="${6:-}"
 cdp() { python3 "$HERE/wallet_cdp.py" "$P" "$1"; }
 front() {
     local s
@@ -29,6 +30,7 @@ bash "$HERE/phone.sh" "$P" press CONTINUE 2 > /dev/null
 python3 "$HERE/wallet_fill.py" "$P" tcd-decimals 0 > /dev/null
 python3 "$HERE/wallet_fill.py" "$P" tcd-supply "$SUPPLY" > /dev/null
 sleep 1
+[ "$BURN" = burn ] && bash "$HERE/phone.sh" "$P" press ON 1 > /dev/null
 bash "$HERE/phone.sh" "$P" press CONTINUE 4 > /dev/null
 cdp "(function(){var d=document.querySelector('[role=dialog]');var t=d.innerText;return t.slice(t.indexOf('REVIEW',20),t.indexOf('REVIEW',20)+200).replace(/\n/g,' ');})()" | cut -c1-260
 bash "$HERE/phone.sh" "$P" press 'BURN ERA' 5 > /dev/null

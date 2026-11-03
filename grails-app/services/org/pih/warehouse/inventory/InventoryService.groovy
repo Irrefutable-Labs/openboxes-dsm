@@ -9,6 +9,7 @@
  **/
 package org.pih.warehouse.inventory
 
+import org.pih.warehouse.dsm.DsmStockWrites
 import grails.gorm.transactions.Transactional
 import grails.plugins.csv.CSVWriter
 import grails.validation.ValidationException
@@ -1436,6 +1437,8 @@ class InventoryService implements ApplicationContextAware {
         Date adjustmentTransactionDate = new Date(cmd.transactionDate.time + 1000)
 
         try {
+            // The baseline is written before the adjustment, and the adjustment is what goes through DSM below.
+            DsmStockWrites.grant("record stock")
             // 1. Calculate the current available items for the given product
             AvailableItemMap availableItems = productAvailabilityService.getAvailableItemsAtDateAsMap(
                     currentLocation,

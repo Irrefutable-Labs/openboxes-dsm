@@ -1,5 +1,6 @@
 package org.pih.warehouse.api.receiving.v2
 
+import org.pih.warehouse.dsm.DsmCustodyService
 import java.time.Instant
 import java.time.LocalDate
 
@@ -91,6 +92,7 @@ class ReceiptV2ServiceSpec extends Specification implements ServiceUnitTest<Rece
     }
 
     void setup() {
+        service.dsmCustodyService = Stub(DsmCustodyService)
         shipmentService = Mock(ShipmentService)
         transactionIdentifierService = Mock(TransactionIdentifierService) {
             generate(_) >> "TRX-001"

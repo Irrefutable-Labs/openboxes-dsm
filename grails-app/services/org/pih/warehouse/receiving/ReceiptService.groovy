@@ -419,6 +419,7 @@ class ReceiptService {
     }
 
     void rollbackPartialReceipts(Shipment shipment) {
+        dsmCustodyService.refuseRollback(shipment)
         log.info "Rollback partial receipts for shipment " + shipment
         if (!shipment) {
             throw new IllegalArgumentException("Cannot rollback without valid shipment")
@@ -451,6 +452,7 @@ class ReceiptService {
     }
 
     void rollbackLastReceipt(Shipment shipment) {
+        dsmCustodyService.refuseRollback(shipment)
         List<Receipt> receivedReceipts = shipment.receipts.findAll { Receipt receipt -> receipt.receiptStatusCode == ReceiptStatusCode.RECEIVED }.sort {
             it.dateCreated
         }

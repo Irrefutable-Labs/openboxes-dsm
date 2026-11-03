@@ -93,11 +93,13 @@ class DsmCustodyService {
      * @return the transfers recorded, one per product; empty when the origin is not on DSM
      * @throws DsmCustodyException when DSM refuses, or the shipment cannot be moved on DSM as it stands
      */
-    List<DsmCustodyTransfer> releaseOnSend(Shipment shipment) {
+    List<DsmCustodyTransfer> releaseOnSend(Shipment shipment, Date shipDate = null) {
         DsmWarehouseAccount origin = dsmAccountService.accountFor(shipment.origin)
         if (!origin) {
             return []
         }
+        DsmStockWrites.grant("send ${shipmentName(shipment)}")
+        refuseBehindBaseline(shipment.origin, quantitiesByProduct(shipment).keySet(), shipDate)
         DsmConnection connection = dsmAccountService.connectionTo(origin, shipment.destination)
         if (!connection) {
             throw new DsmCustodyException(
@@ -111,6 +113,38 @@ class DsmCustodyService {
                     DsmCustodyTransfer.KIND_SHIPMENT, shipment)
         }
         return transfers
+    }
+
+    /**
+     * OpenBoxes counts stock back from its latest baseline, so a transaction dated before one never counts: DSM would move
+     * the units while the books went on showing them. This is refused before anything moves.
+     */
+    private void refuseBehindBaseline(Location location, Collection<Product> products, Date date) {
+        if (!location?.inventory || !products || !date || !dsmAccountService.accountFor(location)) {
+            return
+        }
+        products.each { Product product ->
+            Date baseline = Transaction.executeQuery(
+                    """select max(t.transactionDate) from TransactionEntry e join e.transaction t
+                       where t.inventory = :inventory and e.inventoryItem.product = :product
+                       and t.transactionType.transactionCode in (:codes)""",
+                    [inventory: location.inventory, product: product,
+                     codes: [TransactionCode.PRODUCT_INVENTORY, TransactionCode.INVENTORY]])[0] as Date
+            if (baseline && date.before(baseline)) {
+                throw new DsmCustodyException(
+                        "${product.productCode} at ${location.name} was counted on ${baseline}, and this is dated ${date}: " +
+                                "a record dated before the count would never reach the books while DSM moved the units. Date it now.")
+            }
+        }
+    }
+
+    /** Nothing DSM established is reversed: this refuses a rollback of a document DSM moved units for. */
+    void refuseRollback(Shipment shipment) {
+        if (shipment && DsmCustodyTransfer.findByShipment(shipment)) {
+            throw new DsmCustodyException(
+                    "shipment ${shipmentName(shipment)} moved custody on DSM, and that is never undone: " +
+                            "correct it forward, with a return shipment that names this one")
+        }
     }
 
     // ------------------------------------------------------------------ custody coming in from a peer
@@ -210,23 +244,27 @@ class DsmCustodyService {
      * {@link #requireEstablishedOnReceive(Shipment, Map, String)}.
      */
     List<DsmCustodyTransfer> requireEstablishedOnReceive(Receipt receipt) {
+        DsmStockWrites.grant("receive ${receipt.receiptNumber}")
         Map<Product, Integer> received = [:]
         receipt.receiptItems.each { ReceiptItem item ->
             if ((item.quantityReceived ?: 0) > 0) {
                 received[item.product] = (received[item.product] ?: 0) + item.quantityReceived
             }
         }
+        refuseBehindBaseline(receipt.shipment?.destination, received.keySet(), receipt.actualDeliveryDate)
         return requireEstablishedOnReceive(receipt.shipment, received, receipt.receiptNumber)
     }
 
     /** The same, for the old receiving workflow's partial receipt. */
     List<DsmCustodyTransfer> requireEstablishedOnReceive(PartialReceipt partialReceipt) {
+        DsmStockWrites.grant("receive a partial receipt")
         Map<Product, Integer> received = [:]
         partialReceipt.partialReceiptItems.each { PartialReceiptItem item ->
             if (item.shouldSave && (item.quantityReceiving ?: 0) > 0) {
                 received[item.product] = (received[item.product] ?: 0) + item.quantityReceiving
             }
         }
+        refuseBehindBaseline(partialReceipt.shipment?.destination, received.keySet(), partialReceipt.dateDelivered)
         return requireEstablishedOnReceive(partialReceipt.shipment, received, partialReceipt.receipt?.receiptNumber)
     }
 
@@ -318,6 +356,7 @@ class DsmCustodyService {
      */
     DsmCustodyTransfer transferBetweenWarehouses(Location from, Location to, Product product, int quantity,
                                                  String transactionNumber) {
+        DsmStockWrites.grant("a stock transfer")
         DsmWarehouseAccount origin = dsmAccountService.accountFor(from)
         DsmWarehouseAccount destination = dsmAccountService.accountFor(to)
         if (!origin && !destination) {
@@ -367,6 +406,7 @@ class DsmCustodyService {
         if (!account) {
             return []
         }
+        DsmStockWrites.grant("a stock change")
         String typeId = transaction.transactionType?.id
         if (typeId in [Constants.TRANSFER_IN_TRANSACTION_TYPE_ID, Constants.TRANSFER_OUT_TRANSACTION_TYPE_ID]) {
             // Backed by the shipment, receipt or stock transfer it belongs to.
@@ -386,6 +426,7 @@ class DsmCustodyService {
             int signed = code == TransactionCode.DEBIT ? -(entry.quantity ?: 0) : (entry.quantity ?: 0)
             changes[product] = (changes[product] ?: 0) + signed
         }
+        refuseBehindBaseline(transaction.inventory?.warehouse, changes.keySet(), transaction.transactionDate)
         List<DsmCustodyTransfer> backed = []
         changes.each { Product product, Integer change ->
             if (change < 0) {

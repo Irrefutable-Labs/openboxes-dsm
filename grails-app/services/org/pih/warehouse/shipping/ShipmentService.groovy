@@ -1142,7 +1142,7 @@ class ShipmentService {
             // transfer is established between the two warehouses' own accounts before OpenBoxes records the
             // shipment as sent (docs/plans/2026-11-01-dsm-custody-integration.md). A refusal stops the send here.
             if (shipmentInstance.origin?.isWarehouse() && debitStockOnSend) {
-                dsmCustodyService.releaseOnSend(shipmentInstance)
+                dsmCustodyService.releaseOnSend(shipmentInstance, shipDate)
             }
 
             // Add comment to shipment (as long as there's an actual comment
@@ -1794,6 +1794,7 @@ class ShipmentService {
 
 
     void rollbackLastEvent(Shipment shipmentInstance) {
+        dsmCustodyService.refuseRollback(shipmentInstance)
 
         Event eventInstance = shipmentInstance.mostRecentSystemEvent
 
