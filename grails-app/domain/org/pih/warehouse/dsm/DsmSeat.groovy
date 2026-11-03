@@ -48,8 +48,6 @@ class DsmSeat {
     /** When the vault paid the seat back to the account. */
     Date dateReturned
 
-    /** When the seat was last read standing on the storage nodes. */
-    Date dateVerified
 
     static mapping = {
         table 'dsm_seat'
@@ -63,6 +61,5 @@ class DsmSeat {
         externalCommitment(blank: false, size: Base32Crockford.ID32_LENGTH..Base32Crockford.ID32_LENGTH)
         status(inList: [STATUS_ASSIGNED, STATUS_RETURNED])
         dateReturned(nullable: true)
-        dateVerified(nullable: true)
     }
 }

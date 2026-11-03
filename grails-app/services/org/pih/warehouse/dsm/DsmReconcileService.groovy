@@ -176,7 +176,7 @@ class DsmReconcileService {
         return event
     }
 
-    /** Signed by this organization's account: the record is not lost with this database, and cannot be disowned. */
+    /** Signed by this organization's account. A finding DSM cannot take is not recorded: the next check finds it again. */
     private String publish(DsmReconcileEvent event) {
         String text = [
                 "openboxes/reconcile/v1", event.kind, event.account.deviceId, dsmAccountService.tokenFor(event.product).policyAnchor,
@@ -188,15 +188,9 @@ class DsmReconcileService {
                 .setTopic(ByteString.copyFrom(TOPIC))
                 .setPayload(ByteString.copyFromUtf8(text))
                 .build()
-        try {
-            Envelope envelope = dsmAccountService.clientFor(event.account).invoke("authored.publish", request)
-            return Base32Crockford.encode(DsmHostClient
-                    .expect("authored.publish", envelope, Envelope.PayloadCase.AUTHORED_PUBLISHED_RESPONSE)
-                    .authoredPublishedResponse.address.toByteArray())
-        } catch (DsmHostException unpublished) {
-            // The finding stands without its signature, and shows as unsigned.
-            log.warn("a reconciliation record could not be published: ${unpublished.message}")
-            return null
-        }
+        Envelope envelope = dsmAccountService.clientFor(event.account).invoke("authored.publish", request)
+        return Base32Crockford.encode(DsmHostClient
+                .expect("authored.publish", envelope, Envelope.PayloadCase.AUTHORED_PUBLISHED_RESPONSE)
+                .authoredPublishedResponse.address.toByteArray())
     }
 }

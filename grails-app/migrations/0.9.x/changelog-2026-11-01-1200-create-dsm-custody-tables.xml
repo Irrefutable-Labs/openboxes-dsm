@@ -386,4 +386,8 @@
         <addForeignKeyConstraint baseColumnNames="account_id" baseTableName="dsm_reconcile_event" constraintName="fk_dsm_reconcile_account" referencedColumnNames="id" referencedTableName="dsm_warehouse_account"/>
         <addForeignKeyConstraint baseColumnNames="product_id" baseTableName="dsm_reconcile_event" constraintName="fk_dsm_reconcile_product" referencedColumnNames="id" referencedTableName="product"/>
     </changeSet>
+    <changeSet author="cryptskii" id="031120260400-0">
+        <preConditions onFail="MARK_RAN"><columnExists tableName="dsm_seat" columnName="date_verified"/></preConditions>
+        <dropColumn tableName="dsm_seat" columnName="date_verified"/>
+    </changeSet>
 </databaseChangeLog>

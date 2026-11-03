@@ -93,7 +93,7 @@ class DsmCustodyService {
      * @return the transfers recorded, one per product; empty when the origin is not on DSM
      * @throws DsmCustodyException when DSM refuses, or the shipment cannot be moved on DSM as it stands
      */
-    List<DsmCustodyTransfer> releaseOnSend(Shipment shipment, Date shipDate = null) {
+    List<DsmCustodyTransfer> releaseOnSend(Shipment shipment, Date shipDate) {
         DsmWarehouseAccount origin = dsmAccountService.accountFor(shipment.origin)
         if (!origin) {
             return []
@@ -120,8 +120,11 @@ class DsmCustodyService {
      * the units while the books went on showing them. This is refused before anything moves.
      */
     private void refuseBehindBaseline(Location location, Collection<Product> products, Date date) {
-        if (!location?.inventory || !products || !date || !dsmAccountService.accountFor(location)) {
+        if (!products || !dsmAccountService.accountFor(location)) {
             return
+        }
+        if (!date) {
+            throw new DsmCustodyException("a stock record at ${location.name} needs its date before DSM moves anything")
         }
         products.each { Product product ->
             Date baseline = Transaction.executeQuery(
@@ -406,7 +409,6 @@ class DsmCustodyService {
         if (!account) {
             return []
         }
-        DsmStockWrites.grant("a stock change")
         String typeId = transaction.transactionType?.id
         if (typeId in [Constants.TRANSFER_IN_TRANSACTION_TYPE_ID, Constants.TRANSFER_OUT_TRANSACTION_TYPE_ID]) {
             // Backed by the shipment, receipt or stock transfer it belongs to.
@@ -427,6 +429,7 @@ class DsmCustodyService {
             changes[product] = (changes[product] ?: 0) + signed
         }
         refuseBehindBaseline(transaction.inventory?.warehouse, changes.keySet(), transaction.transactionDate)
+        DsmStockWrites.grant("a stock change")
         List<DsmCustodyTransfer> backed = []
         changes.each { Product product, Integer change ->
             if (change < 0) {

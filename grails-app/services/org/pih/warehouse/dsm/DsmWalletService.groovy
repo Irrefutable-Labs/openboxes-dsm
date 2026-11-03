@@ -27,8 +27,6 @@ import dsm.types.proto.Envelope
 import dsm.types.proto.SofiVaultStatus
 import grails.gorm.transactions.Transactional
 import org.pih.warehouse.core.Location
-import org.pih.warehouse.core.Role
-import org.pih.warehouse.core.RoleType
 import org.pih.warehouse.core.User
 import org.pih.warehouse.dsm.DsmHostClient.Route
 
@@ -125,11 +123,6 @@ class DsmWalletService {
         List<DsmSeat> standing = DsmSeat.findAllByHolderAndStatus(wallet, DsmSeat.STATUS_ASSIGNED).findAll { DsmSeat seat ->
             vaultStands(seat)
         }
-        standing.each { DsmSeat seat ->
-            seat.dateVerified = new Date()
-            seat.save(failOnError: true, flush: true)
-        }
-        syncRoles(wallet)
         if (!standing || !wallet.user) {
             return null
         }
@@ -312,13 +305,11 @@ class DsmWalletService {
                 verdictCell: Base32Crockford.encode(created.verdictCell.toByteArray()),
                 externalCommitment: Base32Crockford.encode(created.externalCommitment.toByteArray()),
         )
-        seat.dateVerified = new Date()
         seat.save(failOnError: true, flush: true)
         if (!holder.user) {
             holder.user = newUser(holder, location, firstName, lastName)
             holder.save(failOnError: true, flush: true)
         }
-        syncRoles(holder)
         return seat
     }
 
@@ -349,20 +340,16 @@ class DsmWalletService {
             seat.status = DsmSeat.STATUS_RETURNED
             seat.dateReturned = new Date()
             seat.save(failOnError: true, flush: true)
-            syncRoles(seat.holder)
-        } else if (seat.status == DsmSeat.STATUS_ASSIGNED && verdict.state == EscrowVerdictState.ESCROW_VERDICT_STATE_NONE) {
-            seat.dateVerified = new Date()
-            seat.save(failOnError: true, flush: true)
         }
         return [state: verdict.state.name().replace("ESCROW_VERDICT_STATE_", ""), outcome: outcome]
     }
 
-    List<String> standingSeatIds() {
-        return DsmSeat.findAllByStatus(DsmSeat.STATUS_ASSIGNED)*.id
-    }
-
-    Map refreshSeatById(String id) {
-        return refreshSeat(DsmSeat.get(id))
+    /** Whether a seat of this wallet's stands, read from the storage nodes now. A revocation found here takes effect here. */
+    boolean seatStands(DsmWallet wallet) {
+        return DsmSeat.findAllByHolderAndStatus(wallet, DsmSeat.STATUS_ASSIGNED).any { DsmSeat seat ->
+            refreshSeat(seat)
+            vaultStands(seat)
+        }
     }
 
     /** The vault itself, walked to its head on the storage nodes: Active, one unit, under this seat's commitment, undecided. */
@@ -426,22 +413,6 @@ class DsmWalletService {
             candidate = "${base}${next++}".toString()
         }
         return candidate
-    }
-
-    /** A person's roles are exactly what their standing seats give: a returned seat stops giving anything. */
-    void syncRoles(DsmWallet wallet) {
-        User user = wallet.user
-        if (!user || wallet.owner) {
-            return
-        }
-        List<RoleType> managed = [RoleType.ROLE_ADMIN, RoleType.ROLE_MANAGER, RoleType.ROLE_ASSISTANT, RoleType.ROLE_BROWSER]
-        new ArrayList<Role>(user.roles ?: []).findAll { Role role -> role.roleType in managed }.each { Role role ->
-            user.removeFromRoles(role)
-        }
-        DsmSeat.findAllByHolderAndStatus(wallet, DsmSeat.STATUS_ASSIGNED)*.level*.roleType.toSet().each { String name ->
-            user.addToRoles(Role.findByRoleType(RoleType.valueOf(name)))
-        }
-        user.save(failOnError: true, flush: true)
     }
 
     // ------------------------------------------------------------------ helpers

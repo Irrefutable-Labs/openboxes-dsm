@@ -32,6 +32,7 @@ import java.text.SimpleDateFormat
 class ApiController {
 
     def userService
+    def dsmAuthorityService
     def helpScoutService
     def localizationService
     ConfigService configService
@@ -44,7 +45,7 @@ class ApiController {
         def username = request.JSON.username
         def password = request.JSON.password
         User named = User.findByUsernameOrEmail(username, username)
-        if (named && !org.pih.warehouse.dsm.DsmWallet.findByUser(named) && userService.authenticate(username, password)) {
+        if (named && !dsmAuthorityService.ownerExists() && userService.authenticate(username, password)) {
             session.user = named
             if (request.JSON.location) {
                 session.warehouse = Location.get(request.JSON.location)

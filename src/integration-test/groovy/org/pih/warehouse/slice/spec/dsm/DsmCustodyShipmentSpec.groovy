@@ -764,7 +764,7 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
         long heldBefore = hostA.balance(ticker)
 
         when:
-        dsmCustodyService.releaseOnSend(shipment)
+        dsmCustodyService.releaseOnSend(shipment, new Date())
 
         then: 'the send is refused with DSM\'s reason'
         DsmCustodyException refused = thrown()

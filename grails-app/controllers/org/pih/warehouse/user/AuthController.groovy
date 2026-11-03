@@ -21,6 +21,7 @@ class AuthController {
     MailService mailService
     def userService
     def authService
+    def dsmAuthorityService
     GrailsApplication grailsApplication
     def recaptchaService
     def userAgentIdentService
@@ -51,6 +52,11 @@ class AuthController {
         if (session.user) {
             flash.message = "You have already logged in."
             redirect(controller: "dashboard", action: "index")
+            return
+        }
+        if (dsmAuthorityService.ownerExists()) {
+            redirect(controller: "dsmWalletSignIn", action: "index")
+            return
         }
 
         if (userAgentIdentService.isMobile()) {
@@ -65,6 +71,10 @@ class AuthController {
      * Performs the authentication logic.
      */
     def handleLogin() {
+        if (dsmAuthorityService.ownerExists()) {
+            redirect(controller: 'dsmWalletSignIn', action: 'index')
+            return
+        }
         def userInstance = User.findByUsernameOrEmail(params.username, params.username)
         if (userInstance) {
 
@@ -93,11 +103,6 @@ class AuthController {
             // Passwords match
             // Compare encoded/hashed password as well as in cleartext (support existing cleartext passwords)
             //if (userInstance.password == params.password.encodeAsPassword() || userInstance.password == params.password) {
-            if (org.pih.warehouse.dsm.DsmWallet.findByUser(userInstance)) {
-                flash.message = "This account signs in with its DSM wallet."
-                redirect(controller: 'dsmWalletSignIn', action: 'index')
-                return
-            }
             if (userService.authenticate(params.username, params.password)) {
                 // Need to fetch the manager and roles in order to avoid
                 // Hibernate error ("could not initialize proxy - no Session")
@@ -156,6 +161,10 @@ class AuthController {
      * Allow user to register a new account
      */
     def signup() {
+        if (dsmAuthorityService.ownerExists()) {
+            redirect(controller: 'dsmWalletSignIn', action: 'index')
+            return
+        }
         Boolean enabled = grailsApplication.config.openboxes.signup.enabled?:false
         if (!enabled) {
             flash.message = "Apologies, but the signup feature is disabled on your system. " +
@@ -175,6 +184,10 @@ class AuthController {
      */
     @Transactional
     def handleSignup() {
+        if (dsmAuthorityService.ownerExists()) {
+            redirect(controller: 'dsmWalletSignIn', action: 'index')
+            return
+        }
         def userInstance = new User()
         if ("POST".equalsIgnoreCase(request.getMethod())) {
             userInstance.properties = params

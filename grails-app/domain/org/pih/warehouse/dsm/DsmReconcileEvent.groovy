@@ -41,7 +41,7 @@ class DsmReconcileEvent {
     User recordedBy
     String transactionNumber
 
-    /** The published object's address, Base32 Crockford; null if the storage nodes could not take it. */
+    /** The published object's address, Base32 Crockford. */
     String signedAddress
 
     Date dateCreated
@@ -58,7 +58,6 @@ class DsmReconcileEvent {
         note(nullable: true, maxSize: 512)
         recordedBy(nullable: true)
         transactionNumber(nullable: true)
-        signedAddress(nullable: true)
     }
 
     def beforeUpdate() {
