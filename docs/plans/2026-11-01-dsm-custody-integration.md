@@ -394,13 +394,24 @@ reads a vault's terms.
   says "prove holdings", not "sign in". Whoever types a person's name is signed in if that person approves. Requests per
   wallet are limited. A real fix needs a Connect request that carries a code to match, which is a DSM change.
 
-- **Open: the three DSM builds must agree.** A host and the wallets connecting to it must be built from the same code
-  (`connect.app.accept` compares signed bytes), and both must write in a form the storage fleet accepts. Measured
-  2026-11-02 on the beta fleet with two fresh accounts side by side: `main` (`ad831f53e`) claimed from the faucet on its
-  first attempt with 0 route-write failures; `fix/beta-requirements-completion` (`e78fd9208`, the build on the phones,
-  including that worktree's uncommitted changes) failed all 6 attempts with `no reserve generation won in 8 attempts` and
-  192 `borne out false` route-write failures. The wallet on the phone failed the same way. A wallet with no economic
-  position cannot answer a holdings proof, so it cannot sign in, and it cannot pay for a token.
+- **Open: why wallets on `fix/beta-requirements-completion` cannot claim ERA.** Measured 2026-11-02/03 on the beta fleet.
+  It is not OpenBoxes, and it is not a general write failure: on the failing account 10,463 cell reads took all 5 seats and
+  the only exception was one cell, and every node accepted every write.
+  - The nodes do not page. `GET /api/v2/cell/T801HTWQ…?from=2` (namespace `DSM/native-reserve-cell/v1`) returned the same
+    answer as without `from`, with no `next`, on all five. That matches the node at `f779cb872`, the commit the fleet's
+    config says it was provisioned on (2026-09-27); which binary the nodes run was not read directly.
+  - Clients have required pages since `7e23a388b` (2026-10-17, on `main` too): an answer over 363,787 bytes is refused.
+  - `d30ecd710` (2026-11-01, branch only) put the claimant's directory entry in each release: 50,177 bytes on `main`,
+    201,814 on the branch. About 7 copies fit the limit on `main`, and one on the branch.
+  - A claim that has to retry adds another copy of the release at each following seat, and nodes keep everything. Past one
+    copy a seat's answer is refused, so the cell cannot be shown final, and every retry adds more. Four seats now answer
+    about 43 MB in 212 to 214 copies. What caused the first retry is not known. About 87% of the copies came from this
+    work's own retries, roughly 150 MB that the nodes keep.
+  - `6e2c368ba` restarted the reserve lineage and its message calls for a beta node wipe, which did not happen. The two
+    lineages coexist: `main` is past generation 217 and the branch stands at generation 1.
+  - `main` has the same flaw with more margin: about 8 copies at one of its reserve cells would stop it too.
+  - Not yet shown: that a paging node clears this. Nothing has been changed on the fleet.
+  A host must also match the wallets connecting to it (`connect.app.accept` compares signed bytes).
 
 The presentation follows Wildstate's overlay: one timeline marking what is WEB2 and what is DSM, over a realistic scenario
 with sample USD values, and running on the beta storage fleet rather than a local one.
