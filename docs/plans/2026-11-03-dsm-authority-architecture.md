@@ -11,13 +11,17 @@ operational application. Synchronizing OpenBoxes is never what settles anything.
 
 | Area | State |
 | --- | --- |
-| Wallet connect, phone sign-in, password refused once bound | Built; *measured* |
+| Wallet connect, phone sign-in | Built; *measured* |
+| Passwords, signup, API login and impersonation, once the organization has an owner | Refused for everyone; *measured* at Northgate. Lakeside has no owner yet, so these still work there |
 | Capped seat token, release on phone approval, seat in a vault, revocation by the authority alone, reassignment | Built; *measured* |
-| Revoked person's open session gets 403 on every write; new sign-in gets `NO_SEAT` | Built; *measured*, once OpenBoxes is told |
-| Noticing a revocation without someone pressing Check | Built; *measured*: locked out 20 s after the verdict went final |
-| Refusing a person whose seat cannot be verified, or who holds only a role written into the database | Built; *measured* |
-| Stock transaction written, changed or deleted at a DSM warehouse outside a DSM-backed flow | Refused; *measured* through GORM, with a grant as the control |
+| Every request by a seat holder reads the vault from the storage nodes, with no timer or local copy | Built; *measured*: about 1.1 s per request, steady over 3 minutes, plus one 32 s request not explained |
+| Revocation | The holder's very next request gets 403 and the session ends, with no job running and nobody pressing anything; *measured*: that request took 21 s, because it also carries out the return. A new sign-in gets `NO_SEAT` |
+| DSM unreadable | Refused with 503 and the session kept; *measured* by freezing the host, after the 120 s client timeout. A freeze shorter than that only delays the request |
+| Roles | From DSM alone, in the `User` domain, so every reader gets the same answer; *measured*: superuser rows written for a seat holder gave nothing |
+| A revoked seat's row written back to `ASSIGNED` | Sign-in still gets `NO_SEAT`, because the vault decides; *measured* |
+| Stock transaction written, changed or deleted anywhere in an organization on DSM, outside a DSM-backed flow | Refused; *measured* through GORM at a DSM warehouse, with a grant as the control |
 | Record dated before a stock count | Refused before DSM moves; *measured* for a shipment, read only for receipts and stock changes |
+| Record with no date | Refused before DSM moves; read only, not run live |
 | Rollback of a shipment DSM moved | Refused, pointing to a return shipment; *measured* for shipments, read only for receipts |
 | Generic API writes to stock, shipments, receipts, users, roles and DSM tables | Refused; *measured* for transactions, users and seats |
 | Stock decrease | Burns units on a burn-enabled token; refused without changes on a burn-off token; *measured* |
@@ -26,7 +30,7 @@ operational application. Synchronizing OpenBoxes is never what settles anything.
 | Receipt refused above what DSM moved | Built; *measured*, surfaced as HTTP 500 |
 | Custody proof of a partner's holdings, no access to its systems | Built; *measured* |
 | Ownership separate from custody; carriers | **Not built.** A balance is both |
-| Books compared with DSM each minute, findings signed and append-only, correction from DSM by the owner | Built; *measured* (section 2) |
+| Books compared with DSM each minute, findings signed and append-only, correction from DSM by the owner | Built; *measured* (section 2). A finding DSM cannot sign is not saved, and the next check finds it again; read only, not run live |
 | Direct edits to stock transactions or the availability table, when they change a total | Detected; *measured* |
 | Commitments of individual database records; edits that leave totals unchanged or sit behind a count | **Not built** |
 | Offline handoffs through OpenBoxes | **Not built** |
@@ -134,12 +138,13 @@ The custody-without-ownership design conflicts with offline as DSM stands, since
 
 ### Authorization: enforced at the operation
 
-- **Keep:** seats in vaults, and roles re-read per request, which is why the 403 worked.
-- **Add a seat watcher:** a job reads each standing seat's verdict cell, and removes roles when one goes final.
-- **Add an operation gate:** a `matchAll` interceptor after `SecurityInterceptor`. For a wallet-bound user, a state-changing
-  request is refused if the last verified seat check is older than a set window, so a stalled watcher fails closed. Match
-  on the action rather than POST, because mutating GETs exist.
-- **Close the bypasses from section 3,** and record the real actor under impersonation.
+- **One authority.** Once an organization has an owner, DSM alone decides. There is no degraded mode, no second authority and
+  no wall-clock window: the seat watcher and its 120 s window were built and then removed for that reason.
+- **Operation gate:** a `matchAll` interceptor reads the holder's vault from the storage nodes on every request, reads included.
+  A vault that does not stand ends the session, and a vault that cannot be read refuses the request.
+- **Roles:** `User.getEffectiveRoles` and the other role readers ask `DsmAuthorityService`. Standing seats give roles, the
+  owner's wallet is the root, and role rows give nothing.
+- **Close the bypasses from section 3.** Impersonation is refused outright once an owner exists.
 
 ### Integrity: commit, capture, reconcile
 
@@ -181,8 +186,8 @@ carriers are their own organizations. Until the device tree is built, accountabi
 ## 6. Order of work
 
 1. **Close the holes (OpenBoxes only). Done, with the gaps listed in section 7.** One fail-closed rule now covers stock writes
-   at a DSM warehouse (`DsmStockWrites`), with the generic API gated, rollback refused, backdating refused before DSM moves, a
-   seat watcher, an operation gate, clean refusals, and tokens with burn on.
+   once an organization is on DSM (`DsmStockWrites`), with the generic API gated, rollback refused, backdating refused before DSM
+   moves, an operation gate that reads the vault each request, clean refusals, and tokens with burn on.
 2. **Reconcile. Done,** with the limits listed in section 7.
 3. **Finish the demo:** second wallet, sample USD scenario, overlay, recording steps.
 4. **DSM's signing request,** if the owner approves it.
@@ -196,10 +201,18 @@ carriers are their own organizations. Until the device tree is built, accountabi
 - Paths that write stock with no DSM flow, such as requisition issue, packing-list import and bulk importers, are now refused
   at a DSM warehouse rather than backed by DSM. That is deliberate, but those features do not work there until backed.
 - Not done from section 3: DSM moving before `save()` has no compensation, beyond a retry recognizing its own move by memo;
-  impersonation still records the impersonated user; editing `TransactionType` through its own screens is not gated.
-- A seat holder is refused once no reading is newer than 120 s (`openboxes.dsm.seat.maxVerifiedAgeSeconds`). So a network
-  outage locks seat holders out of OpenBoxes, which conflicts with working offline and needs a decision before offline work.
-- An owner's wallet holds no seat, so nothing here revokes the owner.
+  editing `TransactionType` through its own screens is not gated.
+- **Sign-in is the hole that remains open.** It uses "Prove holdings of ERA", which does not bind to the sign-in, shows a person
+  the wrong words, and needs an out-of-grant approval. It closes only with DSM's signing request (section 5).
+- **Which row says who holds authority is still a local database row.** The owner flag, and the binding of a seat row to its
+  vault, can be edited by anyone with direct database access. Pointing a person's seat row at another standing vault was not
+  attacked and would probably pass. Closing this needs the account record head (section 5).
+- An owner's wallet holds no seat, so nothing here revokes the owner, and the owner's requests read nothing from DSM.
+- A seat holder pays about 1.1 s per request, and a page with many calls pays it for each. A DSM outage makes a request wait up
+  to 120 s before it is refused, and seat holders cannot use OpenBoxes during it. Offline handoffs are a separate path that
+  settles between devices and syncs afterwards, and are not built.
+- Roles from a seat are organization-wide. A seat names a location, but the role is not limited to it.
+- `seed.py` signs in with a password, so it cannot run against an organization that has an owner.
 - The reconciler compares totals. An edit that leaves a total unchanged (such as moving units between lots), an edit behind a
   stock count, and changes to lots, expiry dates, prices or permissions are invisible to it.
 - A finding's signature proves who said it, not that nothing was withheld: `authored.publish` has no completeness proof, and
