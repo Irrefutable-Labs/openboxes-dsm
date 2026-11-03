@@ -20,8 +20,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 D = os.path.abspath(os.path.join(ROOT, ".."))
 NORTHGATE, LAKESIDE = "192.168.4.39", "192.168.4.40"
+SEAT_TICKER = "NGSEAT"
 AMX, ORS, SEATS = ("C4P4XGDK0SM8KYHN9EYB6BQ5MTZ29NQAB2P7AFHWKV09P8B0JMR0", "0PYXZVSMZ8Z27XXXSH0S9RNC20PJA5H2QQH4GVR4AXJ4RHDRBS5G",
-                   "EHWY9QN0BYE680MAVSKXQZVSCWYCFHKQN2CT9G555ABJBJGQ20ZG")
+                   "W0KWAVP5S6PXHMP6D134A2RFWETGR075348X5XFAX76WE8N4CGXG")
 ENV = dict(os.environ, DSM_CHECKOUT=D + "/wt-fleet-reprovision", DSM_BIN=D + "/dsm-phone-host-target/release",
            JAVA_HOME=D + "/jdk8-zulu/zulu8.98.0.107-ca-jdk8.0.512-macosx_aarch64/Contents/Home")
 
@@ -106,6 +107,7 @@ class Phone:
 
     def show(self, words):
         """Open the Waiting tab until the request naming these words is on screen, and leave it there to be read."""
+        self.apps()
         for _ in range(20):
             self.front()
             self.cdp("(function(){var b=[].slice.call(document.querySelectorAll('button')).filter(function(x){return /^WAITING/i.test(x.innerText.trim())})[0];b&&b.click();return 1})()")
@@ -117,14 +119,24 @@ class Phone:
         raise SystemExit("the phone never showed: " + words)
 
     def approve(self, words):
+        """Approve the waiting request naming these words, and return what the wallet said it did with it."""
+        self.apps()
         for _ in range(20):
             self.front()
             self.cdp("(function(){var b=[].slice.call(document.querySelectorAll('button')).filter(function(x){return /^WAITING/i.test(x.innerText.trim())})[0];b&&b.click();return 1})()")
             time.sleep(1)
             text = self.screen()
             if '"DECLINE"' in text and words in text:
-                self.press("APPROVE", 8)
-                return
+                self.press("APPROVE", 10)
+                for _ in range(12):
+                    said = self.screen()
+                    if "Approving" in said and "\u2026" in said:
+                        time.sleep(4)
+                        continue
+                    if "failed" in said and words in said:
+                        raise SystemExit("the phone could not carry it out: " + said[said.find("Approving failed"):][:260])
+                    return said
+                return self.screen()
             self.press("CHECK", 8)
         raise SystemExit("the phone never showed: " + words)
 
@@ -241,16 +253,24 @@ def main():
     north.call("/dsmWallet/answered", form={"offerDigest": digest, "purpose": "registry"})
     say("Priya claims Lakeside on her phone")
     lake.wallet("owner", priya)
+    for org, who in ((north, "Marcus Hale"), (lake, "Priya Nair")):
+        owners = [w["label"] for w in org.call("/dsmWallet/state")["wallets"] if w["owner"]]
+        if owners != [who]:
+            raise SystemExit("the owner claim did not land: %s owns %s" % (owners, who))
 
     say("seats: the level and five released")
     me = north.call("/dsmWallet/state")["me"]["id"]
     level = north.call("/dsmWallet/addLevel", form={"name": "Warehouse manager", "roleType": "ROLE_MANAGER", "policyAnchor": SEATS, "creatorId": me})
+    if level["ticker"] != SEAT_TICKER:
+        raise SystemExit("the seat token's anchor names %s, not %s" % (level["ticker"], SEAT_TICKER))
     north.call("/dsmWallet/requestSeats", form={"levelId": level["id"], "quantity": "5"})
-    marcus.approve("Pay 5 NGMGR")
+    marcus.approve("Pay 5 " + SEAT_TICKER)
     for _ in range(40):
         if int(north.call("/dsmWallet/state")["levels"][0]["spare"]) >= 5:
             break
         time.sleep(4)
+    else:
+        raise SystemExit("the seats never reached the account: spare is %s" % north.call("/dsmWallet/state")["levels"][0]["spare"])
 
     say("Priya's wallet connects to Northgate")
     north.wallet("person", priya)
@@ -263,6 +283,8 @@ def main():
         if any(a.get("status") == "ESTABLISHED" for a in north.call("/api/dsm/admissions")):
             break
         time.sleep(5)
+    else:
+        raise SystemExit("the 200 units were never released: " + json.dumps(north.call("/api/dsm/admissions"))[:300])
     now = time.localtime()
     north.call("/inventoryItem/saveRecordInventory", form={
         "product.id": ors, "inventory.id": "1", "transactionDate": "date.struct",
@@ -274,7 +296,18 @@ def main():
         "recordInventoryRows[0].newQuantity": "200", "save": "Save"}, raw=True)
 
     subprocess.Popen(["python3", HERE + "/presenter.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
-    say("READY")
+    # The last look before anyone records: the figures the first scenes rest on.
+    state = north.call("/dsmWallet/state")
+    check = [("Northgate owner", [w["label"] for w in state["wallets"] if w["owner"]] == ["Marcus Hale"]),
+             ("Priya's wallet connected", any(w["deviceId"] == "P58TPCQX" for w in state["wallets"])),
+             ("5 spare seats", int(state["levels"][0]["spare"]) >= 5),
+             ("no seat yet", not state["seats"]),
+             ("200 ORS on the books", any(c["code"] == "ORS020" and c["onHand"] == 200 and c["dsmUnits"] == 200
+                                         for c in north.call("/dsmWallet/timeline?after=0&web2After=0")["custody"]))]
+    failed = [name for name, ok in check if not ok]
+    if failed:
+        raise SystemExit("not ready: " + ", ".join(failed))
+    say("READY: " + ", ".join(name for name, _ in check))
 
 
 if __name__ == "__main__":

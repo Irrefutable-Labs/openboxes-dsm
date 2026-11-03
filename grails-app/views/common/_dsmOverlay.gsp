@@ -95,6 +95,7 @@
         function close() { panel.className = ''; clearInterval(timer); }
         <g:if test="${grailsApplication.config.getProperty('openboxes.dsm.demo', Boolean, false)}">
         open();
+        panel.style.top = '96px';
         document.body.style.paddingRight = '290px';
         document.body.style.paddingBottom = '100px';
         </g:if>

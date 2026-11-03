@@ -144,12 +144,14 @@ class DsmWalletService {
     Map signInFor(DsmWallet wallet) {
         ConnectSessionV1 held = dsmAuthorityService.sessionOf(wallet.sessionId)
         if (!held || !wallet.user) {
+            log.warn("sign-in for ${wallet.deviceId.take(8)}: ${held ? "no user bound" : "the host holds no connected session " + wallet.sessionId.take(8)}")
             return null
         }
         String device = Base32Crockford.encode(held.peerDeviceId.toByteArray())
         String genesis = Base32Crockford.encode(held.peerGenesis.toByteArray())
         Map authority = dsmAuthorityService.authorityOf(device, genesis, wallet.user)
         if (!authority.owner && !authority.seats) {
+            log.warn("sign-in for ${wallet.deviceId.take(8)} as ${wallet.user.username}: DSM shows no authority (owner claim ${dsmAuthorityService.ownerClaim()?.wallet?.take(8)}, candidates ${authority.seats?.size()})")
             return null
         }
         return [user: wallet.user, device: device, genesis: genesis,
