@@ -93,6 +93,11 @@ class AuthController {
             // Passwords match
             // Compare encoded/hashed password as well as in cleartext (support existing cleartext passwords)
             //if (userInstance.password == params.password.encodeAsPassword() || userInstance.password == params.password) {
+            if (org.pih.warehouse.dsm.DsmWallet.findByUser(userInstance)) {
+                flash.message = "This account signs in with its DSM wallet."
+                redirect(controller: 'dsmWalletSignIn', action: 'index')
+                return
+            }
             if (userService.authenticate(params.username, params.password)) {
                 // Need to fetch the manager and roles in order to avoid
                 // Hibernate error ("could not initialize proxy - no Session")

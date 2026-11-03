@@ -28,8 +28,14 @@ case "$ACTION" in
         sleep "${4:-5}"
         screen
         ;;
+    click)
+        # The wallet's shell buttons have no text: phone.sh SERIAL_PART click .button-b [WAIT]
+        python3 "$CDP" "$PART" "(function(){var b=document.querySelector('$3');if(!b)return 'nothing matches $3';b.click();return 'clicked $3';})()" 2>&1 | cut -c1-200
+        sleep "${4:-3}"
+        screen
+        ;;
     *)
-        echo "usage: phone.sh SERIAL_PART screen|open CODE|press TEXT [WAIT]" >&2
+        echo "usage: phone.sh SERIAL_PART screen|open CODE|press TEXT [WAIT]|click SELECTOR [WAIT]" >&2
         exit 2
         ;;
 esac

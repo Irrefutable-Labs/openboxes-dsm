@@ -5,8 +5,13 @@ import dsm.types.proto.BalanceGetResponse
 import dsm.types.proto.BalancesListResponse
 import dsm.types.proto.ConnectAppOfferV1
 import dsm.types.proto.ConnectAppRequestIntentV1
+import dsm.types.proto.ConnectAppStatusV1
+import dsm.types.proto.ConnectFact
+import dsm.types.proto.ConnectHoldingsV1
+import dsm.types.proto.ConnectOutcome
 import dsm.types.proto.ConnectPayV1
 import dsm.types.proto.ConnectReplyV1
+import dsm.types.proto.ConnectRequestRefV1
 import dsm.types.proto.ConnectSessionStatus
 import dsm.types.proto.ConnectSessionV1
 import dsm.types.proto.EscrowCreatedResponse
@@ -80,10 +85,14 @@ class DsmWalletService {
 
     /** The first wallet an administrator connects becomes the organization's owner, bound to that administrator. */
     DsmWallet claimOwnership(String offerDigest, User administrator) {
-        if (DsmWallet.findByOwner(true)) {
+        DsmWallet wallet = walletAnswering(offerDigest)
+        DsmWallet owner = DsmWallet.findByOwner(true)
+        if (owner) {
+            if (wallet && wallet.id == owner.id) {
+                return owner
+            }
             throw new DsmCustodyException("this organization already has an owner's wallet")
         }
-        DsmWallet wallet = walletAnswering(offerDigest)
         if (wallet) {
             wallet.owner = true
             wallet.user = administrator
@@ -110,6 +119,60 @@ class DsmWalletService {
             return null
         }
         return [user: wallet.user, location: standing.first().location]
+    }
+
+    /**
+     * Ask a connected wallet to sign its person in. A connected wallet cannot answer a new code, so it is asked over the
+     * session it already has: a holdings proof no grant covers, which waits on the person's phone (Apps, Waiting) until
+     * they approve it there. The wallet signs the proof and the account verifies it, so only that phone can answer.
+     *
+     * @return the session and the request's number; null for a name no wallet here is bound to
+     */
+    Map askToSignIn(String username) {
+        User user = username?.trim() ? User.findByUsernameOrEmail(username.trim(), username.trim()) : null
+        DsmWallet wallet = user ? DsmWallet.findByUser(user) : null
+        if (!wallet) {
+            return null
+        }
+        // DSM requires a holdings request to name a token, and every wallet can prove what it holds of ERA, the
+        // network's own token. What is proven is who answered, not how much they hold.
+        BalanceGetResponse era = balanceRows(wallet.account).find { BalanceGetResponse row -> row.symbol == "ERA" }
+        if (!era?.policyAnchorB32) {
+            throw new DsmCustodyException("this organization's account does not list ERA yet")
+        }
+        ConnectHoldingsV1.Builder holdings = ConnectHoldingsV1.newBuilder()
+                .addPolicyCommits(ByteString.copyFrom(Base32Crockford.decodeId32(era.policyAnchorB32, "ERA's anchor")))
+        ConnectAppRequestIntentV1 intent = ConnectAppRequestIntentV1.newBuilder()
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the session id")))
+                .setHoldings(holdings)
+                .build()
+        long seq = DsmSteps.reply(
+                dsmAccountService.clientFor(wallet.account).connect("connect.app.request", intent, Route.INVOKE),
+                ConnectReplyV1.ReplyCase.REQUEST, "connect.app.request").request.seq
+        return [walletId: wallet.id, seq: seq]
+    }
+
+    /**
+     * What has become of a sign-in request: the wallet's proof, verified by the account, or its refusal.
+     *
+     * @return PROVEN or WAITING, or DECLINED with the wallet's reason after it
+     */
+    String signInAnswer(DsmWallet wallet, long seq) {
+        ConnectRequestRefV1 ref = ConnectRequestRefV1.newBuilder()
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the session id")))
+                .setSeq(seq)
+                .build()
+        Envelope envelope = dsmAccountService.clientFor(wallet.account).invokeQuietly("connect.app.status", ref)
+        ConnectAppStatusV1 status = DsmHostClient
+                .expect("connect.app.status", envelope, Envelope.PayloadCase.CONNECT_REPLY)
+                .connectReply.status
+        if (status.fact == ConnectFact.CONNECT_FACT_HOLDINGS) {
+            return "PROVEN"
+        }
+        if (status.answered && status.outcome in [ConnectOutcome.CONNECT_OUTCOME_DECLINED, ConnectOutcome.CONNECT_OUTCOME_FAILED]) {
+            return "DECLINED ${status.outcome == ConnectOutcome.CONNECT_OUTCOME_FAILED ? status.reason : ""}".toString().trim()
+        }
+        return "WAITING"
     }
 
     // ------------------------------------------------------------------ levels of access
@@ -288,7 +351,7 @@ class DsmWalletService {
         byte[] unusable = new byte[32]
         new java.security.SecureRandom().nextBytes(unusable)
         User user = new User(
-                username: "wallet-${wallet.deviceId.take(12).toLowerCase()}".toString(),
+                username: usernameFor(firstName, lastName),
                 password: Base64.encoder.encodeToString(unusable),
                 firstName: firstName.trim(),
                 lastName: lastName.trim(),
@@ -298,6 +361,17 @@ class DsmWalletService {
         )
         user.save(failOnError: true, flush: true)
         return user
+    }
+
+    /** The name a person types to sign in: their own, made unique. */
+    private static String usernameFor(String firstName, String lastName) {
+        String base = "${firstName.trim()}.${lastName.trim()}".toLowerCase().replaceAll(/[^a-z0-9.]/, "")
+        String candidate = base
+        int next = 2
+        while (User.findByUsername(candidate)) {
+            candidate = "${base}${next++}".toString()
+        }
+        return candidate
     }
 
     /** A person's roles are exactly what their standing seats give: a returned seat stops giving anything. */
@@ -319,11 +393,14 @@ class DsmWalletService {
     // ------------------------------------------------------------------ helpers
 
     private BalanceGetResponse balanceRow(DsmWarehouseAccount account, String anchor) {
+        return balanceRows(account).find { BalanceGetResponse row -> row.policyAnchorB32 == anchor }
+    }
+
+    private List<BalanceGetResponse> balanceRows(DsmWarehouseAccount account) {
         Envelope envelope = dsmAccountService.clientFor(account).query("balance.list", new byte[0])
-        BalancesListResponse list = DsmHostClient
+        return DsmHostClient
                 .expect("balance.list", envelope, Envelope.PayloadCase.BALANCES_LIST_RESPONSE)
-                .balancesListResponse
-        return list.balancesList.find { BalanceGetResponse row -> row.policyAnchorB32 == anchor }
+                .balancesListResponse.balancesList
     }
 
     private static ByteString deviceBytes(String deviceId) {

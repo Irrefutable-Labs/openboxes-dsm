@@ -140,7 +140,12 @@
             return call('state').then(function (s) {
                 var account = document.getElementById('dsm-account');
                 if (s.account) {
-                    account.innerHTML = '<h2>This organization\'s DSM account</h2><div class="hint">' + esc(s.account.location) + ', device <code>' + esc(s.account.deviceId) + '</code></div>';
+                    account.innerHTML = '<h2>This organization\'s DSM account</h2><div class="hint">' + esc(s.account.location) + ', device <code>' + esc(s.account.deviceId) + '</code></div><button class="plain" id="fees">Get network fees</button>';
+                    document.getElementById('fees').onclick = function () {
+                        say('Claiming network fees from the live network.');
+                        accountId().then(function (id) { return apiCall('dsm/accounts/fees', { accountId: id }); })
+                            .then(function () { say('Network fees claimed.'); }).catch(fail);
+                    };
                 } else {
                     account.innerHTML = '<h2>This organization\'s DSM account</h2><div class="hint">Not attached yet.</div>' + (s.canAttach ? '<button id="attach">Attach this server\'s DSM account</button>' : '');
                     var attach = document.getElementById('attach');

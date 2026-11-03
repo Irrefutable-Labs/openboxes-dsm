@@ -55,7 +55,11 @@ class Instance:
         while True:
             try:
                 self.call("POST", "/api/login", json_body={"username": ADMIN[0], "password": ADMIN[1], "location": "1"})
-                return
+                return True
+            except SystemExit as refused:
+                if "answered 401" in str(refused):
+                    return False
+                raise
             except (urllib.error.URLError, ConnectionError, OSError):
                 if time.time() > deadline:
                     raise SystemExit(self.name + " did not come up")
@@ -64,7 +68,9 @@ class Instance:
 
 def seed(instance, warehouse, partner, products, category_name):
     print("--", instance.name, flush=True)
-    instance.wait_up()
+    if not instance.wait_up():
+        print("   an owner's wallet has taken this organization over: nothing to seed", flush=True)
+        return
     instance.call("POST", "/api/generic/location/1", json_body={"name": warehouse})
     instance.call("POST", "/api/generic/location/2", json_body={"name": partner})
     held = {p.get("productCode") for p in instance.call("GET", "/api/generic/product/?max=100")}

@@ -43,8 +43,9 @@ class ApiController {
     def login() {
         def username = request.JSON.username
         def password = request.JSON.password
-        if (userService.authenticate(username, password)) {
-            session.user = User.findByUsernameOrEmail(username, username)
+        User named = User.findByUsernameOrEmail(username, username)
+        if (named && !org.pih.warehouse.dsm.DsmWallet.findByUser(named) && userService.authenticate(username, password)) {
+            session.user = named
             if (request.JSON.location) {
                 session.warehouse = Location.get(request.JSON.location)
             }

@@ -11,6 +11,10 @@
         p { color: #aeb7c6; margin: 6px 0; }
         img { width: 280px; height: 280px; background: #fff; border-radius: 8px; padding: 10px; margin: 16px 0 10px; }
         ol { text-align: left; color: #cbd2de; padding-left: 22px; margin: 12px 0; }
+        input { width: 62%; padding: 8px; border-radius: 6px; border: 1px solid #3c4557; background: #10131a; color: #eef1f6; }
+        button { padding: 9px 12px; border: 0; border-radius: 6px; background: #b7791f; color: #fff; font-weight: 700; cursor: pointer; }
+        hr { border: 0; border-top: 1px solid #2c3444; margin: 18px 0 12px; }
+        #asked { margin-top: 10px; font-weight: 600; color: #f0b429; min-height: 22px; }
         #state { margin-top: 12px; font-weight: 600; color: #f0b429; min-height: 24px; }
         a { color: #7fb3ff; }
         .failed { color: #ff8a80; }
@@ -19,6 +23,14 @@
 <body>
 <main>
     <h1>Sign in with your DSM wallet</h1>
+    <form id="ask">
+        <p>Already connected? Enter your username, then approve on your phone.</p>
+        <input id="username" autocomplete="username" placeholder="Username" />
+        <button type="submit">Ask my phone</button>
+    </form>
+    <div id="asked"></div>
+    <hr/>
+    <p>New here? Connect your wallet.</p>
     <g:if test="${code}">
         <img src="${createLink(action: 'qr')}" alt="Connect code"/>
         <ol>
@@ -35,6 +47,32 @@
 </main>
 <script>
     (function () {
+        var asked = document.getElementById('asked');
+        var answerUrl = '${createLink(action: 'answer')}';
+        function pollAnswer() {
+            fetch(answerUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (s) {
+                    if (s.state === 'SIGNED_IN') { asked.textContent = 'Proof verified. Signing you in.'; window.location = s.redirect; return; }
+                    if (s.state === 'DECLINED') { asked.textContent = s.reason ? 'Your wallet could not answer: ' + s.reason : 'Declined on the phone.'; return; }
+                    if (s.state === 'NO_SEAT') { asked.textContent = 'That wallet holds no seat here any more.'; return; }
+                    if (s.state === 'FAILED') { asked.textContent = s.reason; return; }
+                    setTimeout(pollAnswer, 2500);
+                })
+                .catch(function () { setTimeout(pollAnswer, 4000); });
+        }
+        document.getElementById('ask').onsubmit = function (e) {
+            e.preventDefault();
+            asked.textContent = 'Asking your phone.';
+            fetch('${createLink(action: 'ask')}', {
+                method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json' },
+                body: new URLSearchParams({ username: document.getElementById('username').value })
+            }).then(function (r) { return r.json(); }).then(function (s) {
+                if (s.state === 'FAILED') { asked.textContent = s.reason; return; }
+                asked.textContent = 'If that is your account, open your wallet: Apps, Waiting, and approve.';
+                pollAnswer();
+            }).catch(function (x) { asked.textContent = x.message; });
+        };
         var state = document.getElementById('state');
         if (!state) return;
         var url = '${createLink(action: 'status')}';

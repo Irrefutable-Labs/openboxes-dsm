@@ -43,7 +43,7 @@
         function add(html) { var d = document.createElement('div'); d.className = 'dsm-ev dsm-flash'; d.innerHTML = html; list.insertBefore(d, list.firstChild); }
         function poll() {
             fetch(url + '?after=' + after + '&web2After=' + web2After, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (r) { return r.ok ? r.json().catch(function () { return null; }) : null; })
                 .then(function (j) {
                     if (!j || !j.data) return;
                     var s = j.data;
