@@ -389,10 +389,9 @@ Read from DSM's proto and specs, not yet exercised: who may build a release (A12
 verdict by the wallet that branch pays), how a person proves a seat they hold through a vault, and how an application
 reads a vault's terms.
 
-- **Open: sign-in is not bound to the browser.** A connected wallet cannot answer a new code, so a returning person is
-  asked over their session with a holdings proof. It proves the phone answered, but not which browser asked, and the phone
-  says "prove holdings", not "sign in". Whoever types a person's name is signed in if that person approves. Requests per
-  wallet are limited. A real fix needs a Connect request that carries a code to match, which is a DSM change.
+- **Sign-in is bound to the browser (DSM Amendment A28).** A connected wallet cannot answer a new code, so a returning person
+  is asked over their session to sign one line naming the organization, the person and a code the asking browser shows. It
+  rests on the person comparing that code. Requests per wallet are limited.
 
 - **Open: why wallets on `fix/beta-requirements-completion` cannot claim ERA.** Measured 2026-11-02/03 on the beta fleet.
   It is not OpenBoxes, and it is not a general write failure: on the failing account 10,463 cell reads took all 5 seats and

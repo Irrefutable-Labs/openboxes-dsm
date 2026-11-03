@@ -11,7 +11,8 @@ operational application. Synchronizing OpenBoxes is never what settles anything.
 
 | Area | State |
 | --- | --- |
-| Wallet connect, phone sign-in | Built; *measured* |
+| Wallet connect | Built; *measured* |
+| Phone sign-in by a signature over the words shown, naming the person and a code the asking browser shows | Built; *measured*: of two browsers asking for one person, approving one signed in only that one, and declining the other left it out. The wallet is DSM Amendment A28, branch `feat/connect-sign` |
 | Passwords, signup, API login and impersonation, once the organization has an owner | Refused for everyone; *measured* at Northgate. Lakeside has no owner yet, so these still work there |
 | Capped seat token, release on phone approval, seat in a vault, revocation by the authority alone, reassignment | Built; *measured* |
 | Every request by a seat holder reads the vault from the storage nodes, with no timer or local copy | Built; *measured*: about 1.1 s per request, steady over 3 minutes, plus one 32 s request not explained |
@@ -91,8 +92,8 @@ write.
 The position-by-position walk that would detect gaps exists (`economic_registers.rs:702`) but is internal, and no route
 returns a peer's history.
 
-**No Connect request signs application-chosen bytes.** None of the 15 kinds does, for an application's purposes. This also
-blocks the fix for sign-in, which today is not tied to the browser that asked.
+**No Connect request signed application-chosen bytes.** None of the 15 kinds did, for an application's purposes, which also
+blocked tying sign-in to the browser that asked. DSM Amendment A28 adds that request, and sign-in now uses it.
 
 **Offline is narrow.** `offline.rs:70-107` admits only an offline-bearer `Transfer`, and refuses every vault operation.
 It needs a chip ("offline = chips", `wallet_routes.rs:585`), a contact added online, and value loaded online. The receiver
@@ -179,7 +180,7 @@ carriers are their own organizations. Until the device tree is built, accountabi
 
 | Change | Unlocks | Without it |
 | --- | --- | --- |
-| **A Connect request that shows and signs application-chosen bytes** | Binding sign-in to a browser, signed handoffs, signed discrepancy reports. One change, three problems | Sign-in stays unbound; reports use the wallet's `authored.publish`, which an application cannot request |
+| **A Connect request that shows and signs application-chosen bytes. Built: DSM Amendment A28** | Binding sign-in to a browser (done), signed handoffs and signed discrepancy reports (not yet using it) | |
 | **An account record head**: a new leaf or operation in the closed write set | Verifiable, gap-proof commitments | Detection only against a known head |
 | Device tree store (already a known hole) | One person, several devices | One device per person |
 
@@ -190,7 +191,7 @@ carriers are their own organizations. Until the device tree is built, accountabi
    moves, an operation gate that reads the vault each request, clean refusals, and tokens with burn on.
 2. **Reconcile. Done,** with the limits listed in section 7.
 3. **Finish the demo:** second wallet, sample USD scenario, overlay, recording steps.
-4. **DSM's signing request,** if the owner approves it.
+4. **DSM's signing request. Done,** and sign-in uses it. Handoffs and reports do not yet.
 5. **Custody and ownership,** with one carrier, online; then offline per the owner's decision.
 6. **Commitments,** starting with the interim, then the record head if approved.
 
@@ -202,8 +203,9 @@ carriers are their own organizations. Until the device tree is built, accountabi
   at a DSM warehouse rather than backed by DSM. That is deliberate, but those features do not work there until backed.
 - Not done from section 3: DSM moving before `save()` has no compensation, beyond a retry recognizing its own move by memo;
   editing `TransactionType` through its own screens is not gated.
-- **Sign-in is the hole that remains open.** It uses "Prove holdings of ERA", which does not bind to the sign-in, shows a person
-  the wrong words, and needs an out-of-grant approval. It closes only with DSM's signing request (section 5).
+- Sign-in rests on the person comparing a code. The signature covers the words and the wallet shows them, but someone who
+  approves without reading can still sign in a browser they do not control. It proves the wallet's key signed after approval on
+  that device, not who pressed. The signature is not saved or published, so sign-ins are not yet an auditable record.
 - **Which row says who holds authority is still a local database row.** The owner flag, and the binding of a seat row to its
   vault, can be edited by anyone with direct database access. Pointing a person's seat row at another standing vault was not
   attacked and would probably pass. Closing this needs the account record head (section 5).
