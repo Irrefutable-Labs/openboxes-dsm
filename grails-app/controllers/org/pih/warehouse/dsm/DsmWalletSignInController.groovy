@@ -5,6 +5,7 @@ import com.google.zxing.client.j2se.MatrixToImageWriter
 import com.google.zxing.qrcode.QRCodeWriter
 import dsm.types.proto.ConnectAppOfferV1
 import grails.converters.JSON
+import java.security.SecureRandom
 
 import org.pih.warehouse.core.Location
 import org.pih.warehouse.core.User
@@ -18,6 +19,8 @@ class DsmWalletSignInController {
 
     /** How long a browser waits on one sign-in request. */
     private static final long SIGN_IN_REQUEST_MS = 300000L
+    private static final String BROWSER_CODE_LETTERS = "23456789ABCDEFGHJKMNPQRSTVWXYZ"
+    private static final SecureRandom RANDOM = new SecureRandom()
 
     DsmWalletService dsmWalletService
 
@@ -46,14 +49,21 @@ class DsmWalletSignInController {
         response.outputStream.flush()
     }
 
-    /** A connected wallet's person names themselves; their phone is asked. The answer is the same for any name. */
+    /**
+     * A connected wallet's person names themselves; their phone is asked to sign, in words naming the code this browser
+     * shows. The person approves only if the two match, so an approval signs in this browser and no other. The answer is
+     * the same for any name.
+     */
     def ask() {
         try {
-            Map asked = dsmWalletService.askToSignIn(params.username, request.remoteAddr)
+            String code = browserCode()
+            Map asked = dsmWalletService.askToSignIn(params.username, request.remoteAddr, code)
             String name = params.username?.trim()
             if (asked) {
                 session.dsmSignInWallet = asked.walletId
                 session.dsmSignInSeq = asked.seq
+                session.dsmSignInStatement = asked.statement
+                session.dsmSignInCode = code
                 session.dsmSignInName = name
                 session.dsmSignInAt = System.currentTimeMillis()
             } else if (session.dsmSignInName != name) {
@@ -61,13 +71,13 @@ class DsmWalletSignInController {
                 // must not sign it in as someone it no longer asked to be.
                 session.dsmSignInWallet = null
             }
-            render([state: "ASKED"] as JSON)
+            render([state: "ASKED", code: session.dsmSignInWallet ? session.dsmSignInCode : code] as JSON)
         } catch (DsmCustodyException | DsmHostException refused) {
             render([state: "FAILED", reason: refused.message] as JSON)
         }
     }
 
-    /** What the phone answered; signs the browser in once the wallet's proof has verified and a seat stands. */
+    /** What the phone answered; signs the browser in once the wallet has signed this browser's words and a seat stands. */
     def answer() {
         if (!session.dsmSignInWallet) {
             render([state: "WAITING"] as JSON)
@@ -80,7 +90,7 @@ class DsmWalletSignInController {
         }
         try {
             DsmWallet wallet = DsmWallet.get(session.dsmSignInWallet)
-            String answer = dsmWalletService.signInAnswer(wallet, session.dsmSignInSeq as long)
+            String answer = dsmWalletService.signInAnswer(wallet, session.dsmSignInSeq as long, session.dsmSignInStatement as String)
             if (answer.startsWith("DECLINED")) {
                 session.dsmSignInWallet = null
                 render([state: "DECLINED", reason: answer.substring("DECLINED".length()).trim()] as JSON)
@@ -95,6 +105,11 @@ class DsmWalletSignInController {
         } catch (DsmCustodyException | DsmHostException refused) {
             render([state: "FAILED", reason: refused.message] as JSON)
         }
+    }
+
+    /** Four characters a person can compare between two screens. */
+    private static String browserCode() {
+        return (1..4).collect { BROWSER_CODE_LETTERS[RANDOM.nextInt(BROWSER_CODE_LETTERS.length())] }.join("")
     }
 
     private void finishSignIn(DsmWallet wallet) {

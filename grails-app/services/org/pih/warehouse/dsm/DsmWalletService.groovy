@@ -7,7 +7,7 @@ import dsm.types.proto.ConnectAppOfferV1
 import dsm.types.proto.ConnectAppRequestIntentV1
 import dsm.types.proto.ConnectAppStatusV1
 import dsm.types.proto.ConnectFact
-import dsm.types.proto.ConnectHoldingsV1
+import dsm.types.proto.ConnectSignV1
 import dsm.types.proto.ConnectOutcome
 import dsm.types.proto.ConnectPayV1
 import dsm.types.proto.ConnectReplyV1
@@ -131,16 +131,13 @@ class DsmWalletService {
 
     /**
      * Ask a connected wallet to sign its person in. A connected wallet cannot answer a new code, so it is asked over the
-     * session it already has: a holdings proof no grant covers, which waits on the person's phone (Apps, Waiting) until
-     * they approve it there. The wallet signs the proof and the account verifies it, so only that phone can answer.
+     * session it already has: a signing request, which no grant covers and which waits on the person's phone (Apps,
+     * Waiting). The words name the organization, the person and the code the asking browser shows, so someone who types
+     * another person's name gets in only if that person approves a code they cannot see on their own screen.
      *
-     * The request does not bind to the browser that made it, and the phone says "prove holdings", not "sign in": someone
-     * who types another person's name is signed in if that person approves. DSM's holdings request has no field to carry
-     * a code to match. See section 10 of docs/plans/2026-11-01-dsm-custody-integration.md.
-     *
-     * @return the session and the request's number; null for a name no wallet here is bound to, or one asked too recently
+     * @return the wallet, the request's number and the words asked; null for a name no wallet here is bound to, or one asked too recently
      */
-    Map askToSignIn(String username, String client) {
+    Map askToSignIn(String username, String client, String code) {
         User user = username?.trim() ? User.findByUsernameOrEmail(username.trim(), username.trim()) : null
         DsmWallet wallet = user ? DsmWallet.findByUser(user) : null
         if (!wallet) {
@@ -149,22 +146,15 @@ class DsmWalletService {
         if (!reserveSignInAsk(wallet.id, client)) {
             return null
         }
-        // DSM requires a holdings request to name a token, and every wallet can prove what it holds of ERA, the
-        // network's own token. What is proven is who answered, not how much they hold.
-        BalanceGetResponse era = balanceRows(wallet.account).find { BalanceGetResponse row -> row.symbol == "ERA" }
-        if (!era?.policyAnchorB32) {
-            throw new DsmCustodyException("this organization's account does not list ERA yet")
-        }
-        ConnectHoldingsV1.Builder holdings = ConnectHoldingsV1.newBuilder()
-                .addPolicyCommits(ByteString.copyFrom(Base32Crockford.decodeId32(era.policyAnchorB32, "ERA's anchor")))
+        String statement = "Sign in to ${homeAccount().location.name} as ${user.username}. Browser code ${code}.".toString()
         ConnectAppRequestIntentV1 intent = ConnectAppRequestIntentV1.newBuilder()
                 .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the session id")))
-                .setHoldings(holdings)
+                .setSign(ConnectSignV1.newBuilder().setStatement(statement))
                 .build()
         long seq = DsmSteps.reply(
                 dsmAccountService.clientFor(wallet.account).connect("connect.app.request", intent, Route.INVOKE),
                 ConnectReplyV1.ReplyCase.REQUEST, "connect.app.request").request.seq
-        return [walletId: wallet.id, seq: seq]
+        return [walletId: wallet.id, seq: seq, statement: statement]
     }
 
     /** Takes one sign-in ask if the limits allow it, and forgets whatever has aged out, so the record stays bounded. */
@@ -192,7 +182,7 @@ class DsmWalletService {
      *
      * @return PROVEN or WAITING, or DECLINED with the wallet's reason after it
      */
-    String signInAnswer(DsmWallet wallet, long seq) {
+    String signInAnswer(DsmWallet wallet, long seq, String statement) {
         ConnectRequestRefV1 ref = ConnectRequestRefV1.newBuilder()
                 .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the session id")))
                 .setSeq(seq)
@@ -201,8 +191,8 @@ class DsmWalletService {
         ConnectAppStatusV1 status = DsmHostClient
                 .expect("connect.app.status", envelope, Envelope.PayloadCase.CONNECT_REPLY)
                 .connectReply.status
-        if (status.fact == ConnectFact.CONNECT_FACT_HOLDINGS) {
-            return "PROVEN"
+        if (status.fact == ConnectFact.CONNECT_FACT_SIGNED && status.signedStatement == statement) {
+            return "SIGNED"
         }
         if (status.answered && status.outcome in [ConnectOutcome.CONNECT_OUTCOME_DECLINED, ConnectOutcome.CONNECT_OUTCOME_FAILED]) {
             return "DECLINED ${status.outcome == ConnectOutcome.CONNECT_OUTCOME_FAILED ? status.reason : ""}".toString().trim()

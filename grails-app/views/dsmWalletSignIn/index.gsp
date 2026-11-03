@@ -53,7 +53,7 @@
             fetch(answerUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
                 .then(function (r) { return r.json(); })
                 .then(function (s) {
-                    if (s.state === 'SIGNED_IN') { asked.textContent = 'Proof verified. Signing you in.'; window.location = s.redirect; return; }
+                    if (s.state === 'SIGNED_IN') { asked.textContent = 'Signed by your wallet. Signing you in.'; window.location = s.redirect; return; }
                     if (s.state === 'DECLINED') { asked.textContent = s.reason ? 'Your wallet could not answer: ' + s.reason : 'Declined on the phone.'; return; }
                     if (s.state === 'NO_SEAT') { asked.textContent = 'That wallet holds no seat here any more.'; return; }
                     if (s.state === 'FAILED') { asked.textContent = s.reason; return; }
@@ -69,7 +69,7 @@
                 body: new URLSearchParams({ username: document.getElementById('username').value })
             }).then(function (r) { return r.json(); }).then(function (s) {
                 if (s.state === 'FAILED') { asked.textContent = s.reason; return; }
-                asked.textContent = 'If that is your account, open your wallet: Apps, Waiting, and approve.';
+                asked.textContent = 'If that is your account, open your wallet: Apps, Waiting. Approve only if it says code ' + s.code + '.';
                 pollAnswer();
             }).catch(function (x) { asked.textContent = x.message; });
         };
