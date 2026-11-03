@@ -17,5 +17,6 @@
         <g:layoutBody />
     </div>
 <%= NewRelic.getBrowserTimingFooter() %>
+<g:render template="/common/dsmOverlay"/>
 </body>
 </html>

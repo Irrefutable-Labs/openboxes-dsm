@@ -755,5 +755,6 @@
 </g:if>
 <r:layoutResources/>
 <%= NewRelic.getBrowserTimingFooter() %>
+<g:render template="/common/dsmOverlay"/>
 </body>
 </html>

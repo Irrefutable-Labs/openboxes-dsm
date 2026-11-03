@@ -16,8 +16,7 @@ database() { # organization, host port
 }
 database a 33061
 database b 33062
-database registry 33063
-for org in a b registry; do
+for org in a b; do
     for _ in $(seq 1 120); do
         docker exec "openboxes-demo-$org" mysqladmin ping -h 127.0.0.1 -uopenboxes -popenboxes --silent > /dev/null 2>&1 && break
         sleep 1

@@ -52,6 +52,8 @@ class RoleInterceptor {
         'locationGroup'  : ['create'],
         'locationType'   : ['list'],
         'productSupplier': ['create', 'delete', 'edit'],
+        // the DSM screen, and what it reads and changes: for administrators, with their own wallets
+        'dsmWallet'      : ['index', 'state', 'attachAccount', 'offer', 'answered', 'addLevel', 'requestSeats', 'assignSeat', 'refreshSeat'],
         // what the DSM accounts hold: for administrators
         'dsmCustodyApi'  : ['accounts', 'tokens', 'connections', 'admissions', 'releases', 'releaseDecisions', 'inbound', 'transfers']
     ]

@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+<head>
+    <meta name="layout" content="custom"/>
+    <title>DSM</title>
+    <style>
+        .dsmp { max-width: 1120px; margin: 0 auto; padding: 16px; color: #1f2733; }
+        .dsmp h1 { font-size: 22px; margin: 0 0 4px; }
+        .dsmp h2 { font-size: 16px; margin: 0 0 8px; }
+        .dsmp .card { background: #fff; border: 1px solid #dfe3ea; border-radius: 10px; padding: 16px; margin: 12px 0; }
+        .dsmp .hint { color: #5c6675; font-size: 13px; margin: 4px 0 10px; }
+        .dsmp table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+        .dsmp th, .dsmp td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef0f4; }
+        .dsmp input, .dsmp select { padding: 6px 8px; border: 1px solid #c8ced8; border-radius: 6px; margin: 2px 6px 2px 0; }
+        .dsmp button { padding: 7px 12px; border: 0; border-radius: 6px; background: #b7791f; color: #fff; font-weight: 600; cursor: pointer; margin: 2px 6px 2px 0; }
+        .dsmp button.plain { background: #4a5568; }
+        .dsmp code { background: #f3f4f7; padding: 2px 5px; border-radius: 4px; font-size: 12px; word-break: break-all; }
+        .dsmp .qr { margin-top: 10px; }
+        .dsmp .qr img { width: 220px; height: 220px; display: block; }
+        .dsmp #dsm-message { min-height: 22px; font-weight: 600; }
+        .dsmp .bad { color: #b42318; } .dsmp .good { color: #05603a; }
+    </style>
+</head>
+<body>
+<div class="dsmp">
+    <h1>DSM</h1>
+    <div class="hint">People connect with their own wallets. What this page shows is read from this organization's DSM account and the storage nodes.</div>
+    <div id="dsm-message"></div>
+
+    <div class="card" id="dsm-account"></div>
+
+    <div class="card">
+        <h2>Connect a wallet</h2>
+        <div class="hint">Show this code and scan it in the wallet under Apps, Scan code, then approve it on the phone.</div>
+        <select id="purpose">
+            <option value="person">A person</option>
+            <option value="owner">The owner of this organization</option>
+            <option value="registry">The product registry's wallet</option>
+        </select>
+        <button id="make-offer">Show a connect code</button>
+        <div class="qr" id="offer"></div>
+        <table id="wallets"></table>
+    </div>
+
+    <div class="card">
+        <h2>Levels of access</h2>
+        <div class="hint">Make the token in the creator's wallet (Accounts, Create token). Its supply is the most seats there can ever be. Then paste its anchor here.</div>
+        <input id="level-name" placeholder="Name, such as Warehouse manager"/>
+        <select id="level-role">
+            <option value="ROLE_ADMIN">Admin</option><option value="ROLE_MANAGER">Manager</option>
+            <option value="ROLE_ASSISTANT">Assistant</option><option value="ROLE_BROWSER">Browser</option>
+        </select>
+        <input id="level-anchor" placeholder="The token's anchor" size="44"/>
+        <select id="level-creator"></select>
+        <button id="add-level">Add level</button>
+        <table id="levels"></table>
+    </div>
+
+    <div class="card">
+        <h2>Assign a seat</h2>
+        <div class="hint">Locks one seat in a vault naming this person, which only you can revoke, from your own wallet.</div>
+        <select id="seat-level"></select>
+        <select id="seat-wallet"></select>
+        <select id="seat-location">
+            <g:each in="${locations}" var="location"><option value="${location.id}">${location.name}</option></g:each>
+        </select>
+        <input id="seat-first" placeholder="First name"/><input id="seat-last" placeholder="Last name"/>
+        <button id="assign">Assign seat</button>
+        <table id="seats"></table>
+    </div>
+</div>
+<script>
+    (function () {
+        var base = '${createLink(controller: 'dsmWallet')}/';
+        var message = document.getElementById('dsm-message');
+        function say(text, bad) { message.textContent = text || ''; message.className = bad ? 'bad' : 'good'; }
+        function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : v; return d.innerHTML; }
+        function call(action, form) {
+            var init = { credentials: 'same-origin', headers: { Accept: 'application/json' } };
+            if (form) { init.method = 'POST'; init.body = new URLSearchParams(form); }
+            return fetch(base + action, init).then(function (r) {
+                return r.json().catch(function () { return {}; }).then(function (j) {
+                    if (!r.ok) throw new Error(j.errorMessage || ('The server answered ' + r.status));
+                    return j.data;
+                });
+            });
+        }
+        function val(id) { return document.getElementById(id).value; }
+        function options(id, rows, label) {
+            var el = document.getElementById(id), kept = el.value;
+            el.innerHTML = rows.map(function (r) { return '<option value="' + esc(r.id) + '">' + esc(label(r)) + '</option>'; }).join('');
+            if (kept) el.value = kept;
+        }
+        function refresh() {
+            return call('state').then(function (s) {
+                var account = document.getElementById('dsm-account');
+                if (s.account) {
+                    account.innerHTML = '<h2>This organization\'s DSM account</h2><div class="hint">' + esc(s.account.location) + ', device <code>' + esc(s.account.deviceId) + '</code></div>';
+                } else {
+                    account.innerHTML = '<h2>This organization\'s DSM account</h2><div class="hint">Not attached yet.</div>' + (s.canAttach ? '<button id="attach">Attach this server\'s DSM account</button>' : '');
+                    var attach = document.getElementById('attach');
+                    if (attach) attach.onclick = function () { call('attachAccount', {}).then(refresh).catch(function (e) { say(e.message, true); }); };
+                }
+                document.getElementById('wallets').innerHTML = '<tr><th>Wallet</th><th>Device</th><th>Seats</th><th></th></tr>' + s.wallets.map(function (w) {
+                    return '<tr><td>' + esc(w.label) + '</td><td><code>' + esc(w.deviceId) + '</code></td><td>' + esc(w.seats) + '</td><td>' + (w.owner ? 'Owner' : '') + '</td></tr>';
+                }).join('');
+                options('level-creator', s.wallets, function (w) { return 'Created by ' + w.label; });
+                options('seat-wallet', s.wallets, function (w) { return 'For ' + w.label; });
+                options('seat-level', s.levels, function (l) { return l.name; });
+                document.getElementById('levels').innerHTML = '<tr><th>Level</th><th>Token</th><th>Cap</th><th>Assigned</th><th>Spare</th><th>Release seats</th></tr>' + s.levels.map(function (l) {
+                    return '<tr><td>' + esc(l.name) + '</td><td>' + esc(l.ticker) + '</td><td>' + esc(l.cap) + '</td><td>' + esc(l.assigned) + '</td><td>' + esc(l.spare) + '</td><td><input size="4" id="release-' + esc(l.id) + '" value="1"/><button class="plain" data-release="' + esc(l.id) + '">Ask ' + esc(l.creator) + '</button></td></tr>';
+                }).join('');
+                document.getElementById('seats').innerHTML = '<tr><th>Seat</th><th>Holder</th><th>Where</th><th>Assigned by</th><th>Status</th><th>Revoke</th></tr>' + s.seats.map(function (x) {
+                    return '<tr><td>' + esc(x.level) + ' #' + esc(x.number) + '</td><td>' + esc(x.holder) + '</td><td>' + esc(x.location) + '</td><td>' + esc(x.authority) + '</td><td>' + esc(x.status) + '</td><td>' + (x.status === 'ASSIGNED'
+                        ? 'In your wallet: SoFi, Escrow, find <code>' + esc(x.cell) + '</code> and decide revoke. <button class="plain" data-refresh="' + esc(x.id) + '">Check</button>'
+                        : '') + '</td></tr>';
+                }).join('');
+            }).catch(function (e) { say(e.message, true); });
+        }
+        document.addEventListener('click', function (e) {
+            var release = e.target.getAttribute && e.target.getAttribute('data-release');
+            if (release) {
+                call('requestSeats', { levelId: release, quantity: val('release-' + release) })
+                    .then(function () { say('Asked. It waits on their phone under Apps, Waiting.'); })
+                    .catch(function (x) { say(x.message, true); });
+            }
+            var check = e.target.getAttribute && e.target.getAttribute('data-refresh');
+            if (check) {
+                call('refreshSeat', { id: check }).then(function (r) { say('The seat\'s verdict cell: ' + r.state + (r.outcome ? ', ' + r.outcome : '')); return refresh(); })
+                    .catch(function (x) { say(x.message, true); });
+            }
+        });
+        var pollingOffer = null;
+        document.getElementById('make-offer').onclick = function () {
+            var purpose = val('purpose');
+            call('offer', {}).then(function (o) {
+                document.getElementById('offer').innerHTML = '<img src="${createLink(controller: 'dsmWalletSignIn', action: 'qr')}?code=' + encodeURIComponent(o.code) + '" alt="Connect code"/><div class="hint">Waiting for the wallet. On a phone, copy this: <code>' + esc(o.code) + '</code></div>';
+                clearInterval(pollingOffer);
+                pollingOffer = setInterval(function () {
+                    call('answered', { offerDigest: o.offerDigest, purpose: purpose }).then(function (a) {
+                        if (!a.answered) return;
+                        clearInterval(pollingOffer);
+                        document.getElementById('offer').innerHTML = '';
+                        say('Wallet ' + a.deviceId + ' connected.');
+                        refresh();
+                    }).catch(function (x) { clearInterval(pollingOffer); say(x.message, true); });
+                }, 2500);
+            }).catch(function (x) { say(x.message, true); });
+        };
+        document.getElementById('add-level').onclick = function () {
+            call('addLevel', { name: val('level-name'), roleType: val('level-role'), policyAnchor: val('level-anchor').trim(), creatorId: val('level-creator') })
+                .then(function () { say('Level added.'); return refresh(); }).catch(function (x) { say(x.message, true); });
+        };
+        document.getElementById('assign').onclick = function () {
+            say('Locking the seat in a vault on the storage nodes.');
+            call('assignSeat', { levelId: val('seat-level'), walletId: val('seat-wallet'), locationId: val('seat-location'), firstName: val('seat-first'), lastName: val('seat-last') })
+                .then(function () { say('Seat assigned.'); return refresh(); }).catch(function (x) { say(x.message, true); });
+        };
+        refresh();
+    })();
+</script>
+</body>
+</html>

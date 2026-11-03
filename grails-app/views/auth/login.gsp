@@ -56,6 +56,11 @@
 								</tr>
 
                                 <tr class="">
+                                    <td class="middle center" colspan="2">
+                                        <g:link class="button big" controller="dsmWalletSignIn" action="index">Sign in with your DSM wallet</g:link>
+                                    </td>
+                                </tr>
+                                <tr class="">
                                     <td class="middle left" colspan="2">
                                         <warehouse:message code="auth.newuser.text"/>
                                         <g:link class="list" controller="auth" action="signup"><warehouse:message code="auth.signup.label" default="Signup"/></g:link>

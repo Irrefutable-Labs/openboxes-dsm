@@ -301,4 +301,63 @@
                                  constraintName="fk_dsm_release_decision_decided_by" deferrable="false"
                                  initiallyDeferred="false" referencedColumnNames="id" referencedTableName="user"/>
     </changeSet>
+    <changeSet author="cryptskii" id="021120261800-0">
+        <preConditions onFail="MARK_RAN"><not><tableExists tableName="dsm_wallet"/></not></preConditions>
+        <createTable tableName="dsm_wallet">
+            <column name="id" type="CHAR(38)"><constraints nullable="false" primaryKey="true"/></column>
+            <column name="version" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="account_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="device_id" type="CHAR(52)"><constraints nullable="false" unique="true" uniqueConstraintName="dsm_wallet_device_uniq"/></column>
+            <column name="genesis" type="CHAR(52)"><constraints nullable="false"/></column>
+            <column name="signing_key" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="session_id" type="CHAR(52)"><constraints nullable="false"/></column>
+            <column name="offer_digest" type="CHAR(52)"><constraints nullable="false"/></column>
+            <column name="user_id" type="CHAR(38)"/>
+            <column name="owner" type="BIT(1)"><constraints nullable="false"/></column>
+            <column name="date_created" type="DATETIME"><constraints nullable="false"/></column>
+            <column name="last_updated" type="DATETIME"><constraints nullable="false"/></column>
+        </createTable>
+        <addForeignKeyConstraint baseColumnNames="account_id" baseTableName="dsm_wallet" constraintName="fk_dsm_wallet_account" referencedColumnNames="id" referencedTableName="dsm_warehouse_account"/>
+        <addForeignKeyConstraint baseColumnNames="user_id" baseTableName="dsm_wallet" constraintName="fk_dsm_wallet_user" referencedColumnNames="id" referencedTableName="user"/>
+    </changeSet>
+
+    <changeSet author="cryptskii" id="021120261800-1">
+        <preConditions onFail="MARK_RAN"><not><tableExists tableName="dsm_access_level"/></not></preConditions>
+        <createTable tableName="dsm_access_level">
+            <column name="id" type="CHAR(38)"><constraints nullable="false" primaryKey="true"/></column>
+            <column name="name" type="VARCHAR(64)"><constraints nullable="false" unique="true" uniqueConstraintName="dsm_access_level_name_uniq"/></column>
+            <column name="role_type" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="policy_anchor" type="CHAR(52)"><constraints nullable="false" unique="true" uniqueConstraintName="dsm_access_level_anchor_uniq"/></column>
+            <column name="ticker" type="VARCHAR(8)"><constraints nullable="false"/></column>
+            <column name="creator_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="date_created" type="DATETIME"><constraints nullable="false"/></column>
+        </createTable>
+        <addForeignKeyConstraint baseColumnNames="creator_id" baseTableName="dsm_access_level" constraintName="fk_dsm_access_level_creator" referencedColumnNames="id" referencedTableName="dsm_wallet"/>
+    </changeSet>
+
+    <changeSet author="cryptskii" id="021120261800-2">
+        <preConditions onFail="MARK_RAN"><not><tableExists tableName="dsm_seat"/></not></preConditions>
+        <createTable tableName="dsm_seat">
+            <column name="id" type="CHAR(38)"><constraints nullable="false" primaryKey="true"/></column>
+            <column name="version" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="level_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="number" type="INT"><constraints nullable="false"/></column>
+            <column name="holder_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="authority_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="location_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="account_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="agreement" type="VARCHAR(1024)"><constraints nullable="false"/></column>
+            <column name="vault_id" type="CHAR(52)"><constraints nullable="false" unique="true" uniqueConstraintName="dsm_seat_vault_uniq"/></column>
+            <column name="verdict_cell" type="CHAR(52)"><constraints nullable="false"/></column>
+            <column name="external_commitment" type="CHAR(52)"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(16)"><constraints nullable="false"/></column>
+            <column name="date_created" type="DATETIME"><constraints nullable="false"/></column>
+            <column name="date_returned" type="DATETIME"/>
+        </createTable>
+        <addForeignKeyConstraint baseColumnNames="level_id" baseTableName="dsm_seat" constraintName="fk_dsm_seat_level" referencedColumnNames="id" referencedTableName="dsm_access_level"/>
+        <addForeignKeyConstraint baseColumnNames="holder_id" baseTableName="dsm_seat" constraintName="fk_dsm_seat_holder" referencedColumnNames="id" referencedTableName="dsm_wallet"/>
+        <addForeignKeyConstraint baseColumnNames="authority_id" baseTableName="dsm_seat" constraintName="fk_dsm_seat_authority" referencedColumnNames="id" referencedTableName="dsm_wallet"/>
+        <addForeignKeyConstraint baseColumnNames="location_id" baseTableName="dsm_seat" constraintName="fk_dsm_seat_location" referencedColumnNames="id" referencedTableName="location"/>
+        <addForeignKeyConstraint baseColumnNames="account_id" baseTableName="dsm_seat" constraintName="fk_dsm_seat_account" referencedColumnNames="id" referencedTableName="dsm_warehouse_account"/>
+    </changeSet>
 </databaseChangeLog>
