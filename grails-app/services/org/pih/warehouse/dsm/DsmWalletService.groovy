@@ -46,11 +46,15 @@ class DsmWalletService {
     static final String OUTCOME_OWNER_REVOKE = "revoke-by-owner"
 
     /**
-     * How often one client can ask one wallet to sign in, so nobody can flood a person's phone with requests. It is not
-     * per wallet alone, or anyone could lock a person out by asking for them first.
+     * How often a wallet can be asked to sign in, so nobody can flood a person's phone with requests: once in 30 seconds
+     * from one client, and a bounded number in ten minutes from everyone. Someone determined can still use up the second
+     * limit and hold a person out until the window passes; that is the price of bounding what reaches their phone.
      */
-    private static final long SIGN_IN_ASK_INTERVAL_MS = 30000L
-    private static final Map<String, Long> LAST_SIGN_IN_ASK = new java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private static final long SIGN_IN_CLIENT_INTERVAL_MS = 30000L
+    private static final long SIGN_IN_WALLET_WINDOW_MS = 600000L
+    private static final int SIGN_IN_WALLET_MAX = 12
+    private static final Map<String, Long> SIGN_IN_LAST_BY_CLIENT = new HashMap<String, Long>()
+    private static final Map<String, List<Long>> SIGN_IN_RECENT_BY_WALLET = new HashMap<String, List<Long>>()
 
     DsmAccountService dsmAccountService
 
@@ -145,9 +149,7 @@ class DsmWalletService {
         if (!wallet) {
             return null
         }
-        String asker = "${wallet.id}|${client}".toString()
-        Long last = LAST_SIGN_IN_ASK.get(asker)
-        if (last != null && System.currentTimeMillis() - last < SIGN_IN_ASK_INTERVAL_MS) {
+        if (!reserveSignInAsk(wallet.id, client)) {
             return null
         }
         // DSM requires a holdings request to name a token, and every wallet can prove what it holds of ERA, the
@@ -165,8 +167,27 @@ class DsmWalletService {
         long seq = DsmSteps.reply(
                 dsmAccountService.clientFor(wallet.account).connect("connect.app.request", intent, Route.INVOKE),
                 ConnectReplyV1.ReplyCase.REQUEST, "connect.app.request").request.seq
-        LAST_SIGN_IN_ASK.put(asker, System.currentTimeMillis())
         return [walletId: wallet.id, seq: seq]
+    }
+
+    /** Takes one sign-in ask if the limits allow it, and forgets whatever has aged out, so the record stays bounded. */
+    private static synchronized boolean reserveSignInAsk(String walletId, String client) {
+        long now = System.currentTimeMillis()
+        SIGN_IN_LAST_BY_CLIENT.values().removeAll { Long at -> now - at >= SIGN_IN_CLIENT_INTERVAL_MS }
+        SIGN_IN_RECENT_BY_WALLET.values().each { List<Long> times -> times.removeAll { Long at -> now - at >= SIGN_IN_WALLET_WINDOW_MS } }
+        SIGN_IN_RECENT_BY_WALLET.values().removeAll { List<Long> times -> times.isEmpty() }
+        String asker = "${walletId}|${client}".toString()
+        List<Long> recent = SIGN_IN_RECENT_BY_WALLET.get(walletId)
+        if (SIGN_IN_LAST_BY_CLIENT.containsKey(asker) || (recent != null && recent.size() >= SIGN_IN_WALLET_MAX)) {
+            return false
+        }
+        SIGN_IN_LAST_BY_CLIENT.put(asker, now)
+        if (recent == null) {
+            recent = new ArrayList<Long>()
+            SIGN_IN_RECENT_BY_WALLET.put(walletId, recent)
+        }
+        recent.add(now)
+        return true
     }
 
     /**

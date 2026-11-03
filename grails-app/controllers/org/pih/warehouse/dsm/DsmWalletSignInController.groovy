@@ -16,6 +16,9 @@ import org.pih.warehouse.core.User
  */
 class DsmWalletSignInController {
 
+    /** How long a browser waits on one sign-in request. */
+    private static final long SIGN_IN_REQUEST_MS = 300000L
+
     DsmWalletService dsmWalletService
 
     /** The sign-in page, with a fresh code for this browser. */
@@ -47,10 +50,16 @@ class DsmWalletSignInController {
     def ask() {
         try {
             Map asked = dsmWalletService.askToSignIn(params.username, request.remoteAddr)
-            // Nothing new was asked: a request this browser is already waiting on stays.
+            String name = params.username?.trim()
             if (asked) {
                 session.dsmSignInWallet = asked.walletId
                 session.dsmSignInSeq = asked.seq
+                session.dsmSignInName = name
+                session.dsmSignInAt = System.currentTimeMillis()
+            } else if (session.dsmSignInName != name) {
+                // Nothing new was asked. A request this browser made for this same name stays; one for another name
+                // must not sign it in as someone it no longer asked to be.
+                session.dsmSignInWallet = null
             }
             render([state: "ASKED"] as JSON)
         } catch (DsmCustodyException | DsmHostException refused) {
@@ -62,6 +71,11 @@ class DsmWalletSignInController {
     def answer() {
         if (!session.dsmSignInWallet) {
             render([state: "WAITING"] as JSON)
+            return
+        }
+        if (System.currentTimeMillis() - (session.dsmSignInAt as long) > SIGN_IN_REQUEST_MS) {
+            session.dsmSignInWallet = null
+            render([state: "FAILED", reason: "That request has expired. Ask again."] as JSON)
             return
         }
         try {
