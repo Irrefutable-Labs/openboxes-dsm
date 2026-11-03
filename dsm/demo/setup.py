@@ -152,11 +152,19 @@ class Org:
             data, headers["Content-Type"] = json.dumps(body).encode(), "application/json"
         elif form is not None:
             data = urllib.parse.urlencode(form).encode()
-        try:
-            with self.open.open(urllib.request.Request(self.base + path, data=data, headers=headers), timeout=280) as r:
-                text = r.read().decode(errors="replace")
-        except urllib.error.HTTPError as refused:
-            raise SystemExit("%s answered %d: %s" % (path, refused.code, refused.read().decode(errors="replace")[:500]))
+        for attempt in range(6):
+            try:
+                with self.open.open(urllib.request.Request(self.base + path, data=data, headers=headers), timeout=280) as r:
+                    text = r.read().decode(errors="replace")
+                break
+            except urllib.error.HTTPError as refused:
+                said = refused.read().decode(errors="replace")[:500]
+                # DSM could not be read this moment: the storage nodes are asked again, never worked around.
+                if refused.code == 503 and attempt < 5:
+                    say("  DSM could not be read, asking again: " + said[-120:])
+                    time.sleep(6)
+                    continue
+                raise SystemExit("%s answered %d: %s" % (path, refused.code, said))
         if raw:
             return text
         try:
