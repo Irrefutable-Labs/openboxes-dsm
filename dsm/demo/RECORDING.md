@@ -10,7 +10,7 @@ you record. The story bar, the live phone and the WEB2/DSM panel explain each st
 To start over from clean data, about 5 minutes:
 
 ```bash
-python3 dsm/demo/setup.py
+python3 /Users/cryptskii/Desktop/claude_workspace/d-s-m/openboxes/dsm/demo/setup.py
 ```
 
 ## What is staged

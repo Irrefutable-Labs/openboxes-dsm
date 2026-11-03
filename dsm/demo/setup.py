@@ -104,6 +104,18 @@ class Phone:
                 return
             self.press("DISCONNECT", 10)
 
+    def show(self, words):
+        """Open the Waiting tab until the request naming these words is on screen, and leave it there to be read."""
+        for _ in range(20):
+            self.front()
+            self.cdp("(function(){var b=[].slice.call(document.querySelectorAll('button')).filter(function(x){return /^WAITING/i.test(x.innerText.trim())})[0];b&&b.click();return 1})()")
+            time.sleep(1)
+            text = self.screen()
+            if '"DECLINE"' in text and words in text:
+                return
+            self.press("CHECK", 8)
+        raise SystemExit("the phone never showed: " + words)
+
     def approve(self, words):
         for _ in range(20):
             self.front()

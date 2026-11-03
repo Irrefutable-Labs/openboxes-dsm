@@ -4,7 +4,7 @@
 <g:if test="${session.user}">
 <style>
     #dsm-ov-btn { position: fixed; right: 16px; bottom: 16px; z-index: 99998; padding: 9px 16px; border: 0; border-radius: 20px; background: #b7791f; color: #fff; font: 700 14px -apple-system, "Segoe UI", sans-serif; cursor: pointer; box-shadow: 0 3px 12px rgba(0,0,0,.35); }
-    #dsm-ov { position: fixed; top: 0; right: 0; bottom: 96px; width: min(420px, 100vw); z-index: 99999; display: none; flex-direction: column; background: #10131a; color: #eef1f6; font: 13px/1.4 -apple-system, "Segoe UI", sans-serif; box-shadow: -6px 0 24px rgba(0,0,0,.45); }
+    #dsm-ov { position: fixed; top: 0; right: 0; bottom: 96px; width: min(290px, 100vw); z-index: 99999; display: none; flex-direction: column; background: #10131a; color: #eef1f6; font: 13px/1.4 -apple-system, "Segoe UI", sans-serif; box-shadow: -6px 0 24px rgba(0,0,0,.45); }
     #dsm-ov.open { display: flex; }
     #dsm-ov header { padding: 12px 14px; border-bottom: 1px solid #2c3444; display: flex; justify-content: space-between; align-items: center; }
     #dsm-ov header strong { font-size: 15px; }
@@ -28,7 +28,7 @@
 </style>
 <button id="dsm-ov-btn" type="button">DSM</button>
 <div id="dsm-ov" aria-label="DSM overlay">
-    <header><strong>What just happened</strong><button id="dsm-ov-close" type="button">Close</button></header>
+    <header><strong>What just happened, newest first</strong><button id="dsm-ov-close" type="button">Close</button></header>
     <div class="dsm-ov-key"><span class="dsm-tag web2">WEB2</span>this organization's own server and database <br/><span class="dsm-tag dsm">DSM</span>cryptographic custody, on the storage nodes</div>
     <div id="dsm-ov-custody"></div>
     <div id="dsm-ov-list"></div>
@@ -41,7 +41,7 @@
         var after = 0, web2After = 0, timer = null, last = {};
         function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : v; return d.innerHTML; }
         function usd(v) { return Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' }); }
-        function add(html) { var d = document.createElement('div'); d.className = 'dsm-ev dsm-flash'; d.innerHTML = html; list.insertBefore(d, list.firstChild); }
+        function add(html) { var d = document.createElement('div'); d.className = 'dsm-ev dsm-flash'; d.innerHTML = html; list.insertBefore(d, list.firstChild); list.scrollTop = 0; }
         // What each step means, for someone watching. Empty: nothing to translate. Null: a read or housekeeping, not worth showing.
         function plain(e) {
             var n = e.name || '', t = e.summary || '';
@@ -95,7 +95,7 @@
         function close() { panel.className = ''; clearInterval(timer); }
         <g:if test="${grailsApplication.config.getProperty('openboxes.dsm.demo', Boolean, false)}">
         open();
-        document.body.style.paddingRight = '420px';
+        document.body.style.paddingRight = '290px';
         document.body.style.paddingBottom = '100px';
         </g:if>
         document.getElementById('dsm-ov-btn').onclick = open;

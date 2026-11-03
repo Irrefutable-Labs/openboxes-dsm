@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What the screen says during the demo, and what each phone shows now.
+"""What the screen says during the demo, what it spotlights, and what each phone shows now.
 
 Serves the current scene and live pictures of the two wallets to the story bar in OpenBoxes (views/common/_dsmDemo.gsp), so
 both organizations' tabs stay in step. Change scene with the N and P keys in the page, or POST /next, /prev or /scene/<n>.
@@ -57,7 +57,7 @@ SCENES = [
      "No passwords. Seats that can be counted and revoked. Custody two companies can verify. Books that cannot quietly drift.", None),
 ]
 
-state = {"scene": 0}
+state = {"scene": 0, "focus": []}
 images = {}
 
 
@@ -91,7 +91,7 @@ class Handler(BaseHTTPRequestHandler):
     def scene(self):
         n = state["scene"]
         title, web2, dsm, phone = SCENES[n]
-        self.answer(json.dumps({"n": n + 1, "of": len(SCENES), "title": title, "web2": web2, "dsm": dsm, "phone": phone}).encode(), "application/json")
+        self.answer(json.dumps({"n": n + 1, "of": len(SCENES), "title": title, "web2": web2, "dsm": dsm, "phone": phone, "focus": state["focus"]}).encode(), "application/json")
 
     def do_GET(self):
         if self.path.startswith("/phone/"):
@@ -104,12 +104,17 @@ class Handler(BaseHTTPRequestHandler):
             self.scene()
 
     def do_POST(self):
-        if self.path == "/next":
-            state["scene"] = min(state["scene"] + 1, len(SCENES) - 1)
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length).decode() if length else ""
+        if self.path == "/focus":
+            # What to spotlight now, separated by |: a CSS selector, or card:<selector>, text:<words> or row:<words>.
+            state["focus"] = [item for item in body.split("|") if item]
+        elif self.path == "/next":
+            state["scene"], state["focus"] = min(state["scene"] + 1, len(SCENES) - 1), []
         elif self.path == "/prev":
-            state["scene"] = max(state["scene"] - 1, 0)
+            state["scene"], state["focus"] = max(state["scene"] - 1, 0), []
         elif self.path.startswith("/scene/"):
-            state["scene"] = max(0, min(int(self.path.split("/")[-1]) - 1, len(SCENES) - 1))
+            state["scene"], state["focus"] = max(0, min(int(self.path.split("/")[-1]) - 1, len(SCENES) - 1)), []
         self.scene()
 
 
