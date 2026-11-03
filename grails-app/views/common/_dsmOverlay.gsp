@@ -70,7 +70,11 @@
         }
         function poll() {
             fetch(url + '?after=' + after + '&web2After=' + web2After, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-                .then(function (r) { return r.ok ? r.json().catch(function () { return null; }) : null; })
+                .then(function (r) {
+                    // The person's seat no longer stands: their screen goes to the sign-in page, which says so.
+                    if (r.status === 403) { window.location = '${request.contextPath}/dsmWalletSignIn/index?refused=seat'; return null; }
+                    return r.ok ? r.json().catch(function () { return null; }) : null;
+                })
                 .then(function (j) {
                     if (!j || !j.data) return;
                     var s = j.data;

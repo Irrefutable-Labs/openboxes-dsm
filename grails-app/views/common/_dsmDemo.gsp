@@ -46,7 +46,9 @@
             if (phone) set('dsm-phone-who', names[phone]);
         }
         // The spotlight, as the wallet's tutorial draws it: everything shaded but what matters now, with a ring and an arrow.
-        var focus = [], focusKey = '', focusAt = 0;
+        var focus = [], focusKey = '', focusAt = 0, handScrollAt = 0, autoScrollAt = 0;
+        ['wheel', 'touchmove'].forEach(function (name) { window.addEventListener(name, function () { handScrollAt = Date.now(); }, { passive: true }); });
+        window.addEventListener('keydown', function (e) { if (/^(Arrow(Up|Down)|Page(Up|Down)|Home|End| )$/.test(e.key)) handScrollAt = Date.now(); });
         var shade = document.getElementById('dsm-shade'), path = document.getElementById('dsm-shade-path'), rings = document.getElementById('dsm-rings');
         function setFocus(list) { var key = list.join('|'); if (key !== focusKey) { focusKey = key; focus = list; focusAt = Date.now(); } }
         function seen(e) { var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; }
@@ -70,12 +72,16 @@
         function draw() {
             var barTop = bar.style.display === 'none' ? window.innerHeight : bar.getBoundingClientRect().top;
             var boxes = focus.map(target).filter(function (e) { return e && seen(e); });
-            // For a few seconds after the focus changes, while the page is still laying itself out, keep the first target
-            // inside the band between the top of the window and the bar. After that the viewer scrolls freely.
-            if (boxes.length && Date.now() - focusAt < 5000) {
+            // The first target stays inside the band between the top of the window and the bar, for as long as it is the
+            // spotlight, whatever the page does: it is scrolled into view (its own scrolling box included), then the window
+            // is nudged clear of the bar. A viewer who scrolls by hand is left alone for a few seconds.
+            if (boxes.length && Date.now() - handScrollAt > 6000 && Date.now() - autoScrollAt > 600) {
                 var first = boxes[0], r = first.getBoundingClientRect(), band = barTop - 10 - 60;
                 if (!first.closest('#dsm-phone, #dsm-ov') && (r.top < 60 || r.bottom > barTop - 10)) {
-                    window.scrollBy(0, r.height <= band ? (r.top + r.height / 2) - (60 + band / 2) : r.top - 70);
+                    autoScrollAt = Date.now();
+                    first.scrollIntoView({ block: r.height <= band ? 'center' : 'start' });
+                    r = first.getBoundingClientRect();
+                    if (r.top < 60 || r.bottom > barTop - 10) window.scrollBy(0, r.height <= band ? (r.top + r.height / 2) - (60 + band / 2) : r.top - 70);
                 }
             }
             if (!boxes.length) { shade.style.display = 'none'; rings.innerHTML = ''; return; }
@@ -95,6 +101,31 @@
             if (rings.getAttribute('data-html') !== html) { rings.innerHTML = html; rings.setAttribute('data-html', html); }
         }
         setInterval(draw, 200);
+        // Nothing of the page sits under the side panel, whatever the window's width: a fixed or sticky element that spans
+        // the width (the header, a modal's backdrop) gets the panel's width as padding, and one anchored to the top right
+        // (a message, a toast) is moved left of it. The page's own layout already leaves the room below.
+        function clearPanel() {
+            var panel = document.getElementById('dsm-ov');
+            if (!panel || panel.className !== 'open') return;
+            var width = panel.offsetWidth + 10, W = window.innerWidth;
+            var all = document.querySelectorAll('body > *, body > * > *, body > * > * > *, body > * > * > * > *');
+            for (var i = 0; i < all.length; i++) {
+                var e = all[i];
+                if (e.id && e.id.indexOf('dsm-') === 0) continue;
+                if (e.closest('#dsm-ov, #dsm-story, #dsm-phone, #dsm-rings, #dsm-shade')) continue;
+                var cs = getComputedStyle(e);
+                if (cs.position !== 'fixed' && cs.position !== 'sticky' && cs.position !== 'absolute') continue;
+                var r = e.getBoundingClientRect();
+                if (r.width === 0 || r.height === 0 || r.right <= W - width + 2) continue;
+                if (r.width >= W * 0.8) {
+                    if (e.style.getPropertyValue('padding-right') !== width + 'px') e.style.setProperty('padding-right', width + 'px', 'important');
+                } else if (cs.position !== 'absolute' || e.offsetParent === null || e.offsetParent === document.body) {
+                    var right = Math.max(width, W - r.right + width);
+                    if (e.style.getPropertyValue('right') !== right + 'px') { e.style.setProperty('right', right + 'px', 'important'); e.style.setProperty('left', 'auto', 'important'); }
+                }
+            }
+        }
+        setInterval(clearPanel, 300);
         // The phone sits wholly above the bar, whatever the window's size or however many lines the bar takes.
         function fit() {
             var barHeight = bar.style.display === 'none' ? 0 : bar.offsetHeight;

@@ -13,6 +13,12 @@ To start over from clean data, about 5 minutes:
 python3 /Users/cryptskii/Desktop/claude_workspace/d-s-m/openboxes/dsm/demo/setup.py
 ```
 
+## How it is driven
+
+`dsm/demo/play.py` does each beat's phone and account work and checks the result before the next beat starts
+(`play.py check N`, `play.py do N`, `play.py scene N 'what to spotlight'`). The browser steps a viewer should see are
+done in the browser. Nothing is left to chance: a beat whose check fails stops the run.
+
 ## What is staged
 
 - The companies, people and prices are made up.
