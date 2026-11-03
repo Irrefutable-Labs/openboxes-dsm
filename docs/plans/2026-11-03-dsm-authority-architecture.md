@@ -215,7 +215,9 @@ carriers are their own organizations. Until the device tree is built, accountabi
 - **The first claim wins,** and it needs an administrator's session while passwords still work. Someone with the database before an owner exists can set that password and claim first. There is no way to transfer or revoke ownership, so a lost owner's wallet needs a new organization.
 - **Assigning a seat is signed by the account, not the person's wallet.** The vault's terms and the published record name who assigned it, but no phone approves it.
 - **Not attacked live:** a seat row pointing at a vault from another account or token, which the checks refuse by reading the code only.
-- **Not yet run on this path:** stock and shipments on a fresh organization. Another person's roles now read as none, so any feature that looks up someone else's role sees nothing, such as a list of approvers; these were not tested.
+- **Custody under an owner has not run since these checks changed.** `DsmCustodyShipmentSpec` passes all 26 tests on real hosts and storage nodes, but with no owner, so it shows custody did not regress. Recording stock and sending a shipment under an owner last ran live just before them.
+- Another person's roles now read as none, so any feature that looks up someone else's role sees nothing, such as a list of approvers. These were not tested.
+- Whether a holder can decide their own seat was not shown here. DSM's own checks and the vault's terms are what refuse it.
 - A failure publishing a seat's record leaves a locked vault with no row. It shows only in the supply count.
 - The stock guard and the reconciler still read account rows. Deleting a row blinds them, though not the authority checks.
 - An owner's wallet holds no seat, so nothing here revokes the owner. Their claim is read once from the storage nodes and held in memory until restart, because it never changes.

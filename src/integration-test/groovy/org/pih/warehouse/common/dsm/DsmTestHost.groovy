@@ -9,6 +9,7 @@ import dsm.types.proto.FaucetClaimResponse
 import groovy.transform.CompileStatic
 
 import org.pih.warehouse.dsm.DsmHostClient
+import org.pih.warehouse.dsm.DsmSteps
 import org.pih.warehouse.dsm.DsmHostException
 
 /**
@@ -39,12 +40,14 @@ class DsmTestHost extends DsmTestProcess {
 
     static DsmTestHost start(String name, File root, File envConfig) {
         String binary = required("DSM_APP_HOST_BIN", "the dsm-app-host binary built from the DSM checkout")
-        File dataDir = new File(root, name)
+        // What the client reads: the host keeps its own state apart from the secret it writes for its operator.
+        File dataDir = new File(root, "${name}-ingress")
         File log = new File(root, "${name}.log")
         int gamePort = freePort()
         int relayPort = freePort()
         ProcessBuilder builder = new ProcessBuilder(binary,
-                "--data-dir", dataDir.absolutePath,
+                "--data-dir", new File(root, name).absolutePath,
+                "--ingress-secret-dir", dataDir.absolutePath,
                 "--env-config", envConfig.absolutePath,
                 "--game-bind", "127.0.0.1:${gamePort}".toString(),
                 "--relay-bind", "127.0.0.1:${relayPort}".toString(),
@@ -64,6 +67,30 @@ class DsmTestHost extends DsmTestProcess {
 
     byte[] deviceId() {
         return client.deviceId()
+    }
+
+    /**
+     * Check this account's connected sessions and approve what waits, as a partner watching its wallet does, until `done`
+     * says to stop. A request reaches a wallet only when it checks.
+     */
+    Thread answeringRequests(java.util.concurrent.atomic.AtomicBoolean done) {
+        return Thread.start("${name} answers") {
+            while (!done.get()) {
+                try {
+                    DsmSteps.reply(client.connect("connect.sync", com.google.protobuf.Empty.getDefaultInstance(), DsmHostClient.Route.INVOKE),
+                            dsm.types.proto.ConnectReplyV1.ReplyCase.SESSIONS, "connect.sync")
+                    DsmSteps.reply(client.connect("connect.pending", com.google.protobuf.Empty.getDefaultInstance(), DsmHostClient.Route.QUERY),
+                            dsm.types.proto.ConnectReplyV1.ReplyCase.PENDING, "connect.pending").pending.pendingList.each { waiting ->
+                        client.connect("connect.respond", dsm.types.proto.ConnectRespondRequestV1.newBuilder()
+                                .setSessionId(waiting.sessionId).setSeq(waiting.seq)
+                                .setDecision(dsm.types.proto.ConnectDecision.CONNECT_DECISION_APPROVE).build(), DsmHostClient.Route.INVOKE)
+                    }
+                } catch (DsmHostException | org.pih.warehouse.dsm.DsmCustodyException ignored) {
+                    // Nothing to answer yet, or the session is settling: the next round looks again.
+                }
+                Thread.sleep(3000L)
+            }
+        }
     }
 
     /**

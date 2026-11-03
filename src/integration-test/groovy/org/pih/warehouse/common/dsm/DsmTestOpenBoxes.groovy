@@ -155,7 +155,7 @@ class DsmTestOpenBoxes extends DsmTestProcess {
             if (text.startsWith("{") || text.startsWith("[")) {
                 json = new JsonSlurper().parseText(text)
             }
-            return [status: status, text: text, json: json]
+            return [status: status, text: text ?: connection.getHeaderField("Location"), json: json]
         }
     }
 }

@@ -554,8 +554,16 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
         given:
         DsmCustodyTransfer transfer = DsmCustodyTransfer.findByShipmentAndProduct(Shipment.get(shipmentId), Product.get(productId))
 
-        when:
-        Map proven = api("proveHoldings", [id: transfer.id])
+        when: 'B\'s account checks its connections, as a partner\'s wallet does'
+        java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean(false)
+        Thread answering = hostB.answeringRequests(done)
+        Map proven
+        try {
+            proven = api("proveHoldings", [id: transfer.id])
+        } finally {
+            done.set(true)
+            answering.join()
+        }
 
         then: 'the proof recomputed B\'s root: B holds exactly the shipped units'
         proven.provenAmount == UNITS_SHIPPED
@@ -829,18 +837,31 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
 
     /** A second superuser on the registry's own instance, through its own generic API. */
     private void createOperator(DsmTestOpenBoxes.Session admin) {
-        String digest = new String(org.apache.commons.codec.binary.Base64.encodeBase64(
-                java.security.MessageDigest.getInstance("SHA").digest(OTHER_OPERATOR_PASSWORD.getBytes("UTF-8"))))
-        Map user = admin.postJson("/generic/user/", [
-                username : OTHER_OPERATOR,
-                password : digest,
-                firstName: "Second",
-                lastName : "Operator",
-                active   : true,
-                roles    : [[id: "ff80818162d9f9cc0162d9fc1c220003"], [id: "5"]],
-        ]) as Map
-        if (!user.id) {
-            throw new IllegalStateException("the second operator was not created: ${user}")
+        // Users change only through their own flow: the generic API refuses them.
+        Map form = [
+                username       : OTHER_OPERATOR,
+                password       : OTHER_OPERATOR_PASSWORD,
+                passwordConfirm: OTHER_OPERATOR_PASSWORD,
+                firstName      : "Second",
+                lastName       : "Operator",
+                email          : "second.operator@example.com",
+                active         : "true",
+                roles          : "ff80818162d9f9cc0162d9fc1c220003",
+        ]
+        String body = form.collect { key, value -> "${URLEncoder.encode(key as String, "UTF-8")}=${URLEncoder.encode(value as String, "UTF-8")}" }.join("&") + "&roles=5"
+        DsmTestOpenBoxes.Session page = new DsmTestOpenBoxes.Session((admin.baseUrl as String) - "/api")
+        page.cookie = admin.cookie
+        Map answer = page.exchange("POST", "/user/save", body, "application/x-www-form-urlencoded")
+        // It redirects to the new user's page. Anything else showed the form again, with what was wrong.
+        if ((answer.status as int) != 302) {
+            String shown = (answer.text as String).readLines().findAll { String line -> line.contains("error") || line.contains("must") || line.contains("invalid") }.take(12).join(" ")
+            throw new IllegalStateException("the second operator was not created: ${answer.status} ${shown.take(900)}")
+        }
+        // A new user starts inactive, and an administrator turns them on.
+        String id = (answer.text as String).tokenize("/").last().tokenize("?").first()
+        Map activated = page.exchange("POST", "/user/update", "id=${id}&active=true&${body}", "application/x-www-form-urlencoded")
+        if ((activated.status as int) != 302) {
+            throw new IllegalStateException("the second operator was not activated: ${activated.status}")
         }
     }
 
