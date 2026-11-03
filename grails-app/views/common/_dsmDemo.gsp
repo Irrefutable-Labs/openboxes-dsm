@@ -133,6 +133,8 @@
             box.style.bottom = (barHeight + 12) + 'px';
             var width = Math.max(180, Math.min(340, Math.round(room * 330 / 470), Math.round(window.innerWidth * 0.34)));
             box.style.width = width + 'px';
+            // While a phone is shown, the page keeps clear of it too.
+            document.body.style.paddingLeft = box.style.display !== 'none' && !document.querySelector('main') ? (width + 30) + 'px' : '';
             // On the sign-in page the card stands clear of the phone.
             var card = document.querySelector('main');
             if (card) {
