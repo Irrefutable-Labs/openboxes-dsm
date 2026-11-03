@@ -23,6 +23,9 @@
 <body>
 <main>
     <h1>Sign in with your DSM wallet</h1>
+    <g:if test="${params.refused == 'seat'}">
+        <p style="margin:0 0 14px;padding:12px 14px;border-radius:8px;background:#5c1f1a;color:#fff;font-weight:600;">Refused. Your seat is no longer standing on DSM. Nobody edited your account: the owner revoked it from their own wallet.</p>
+    </g:if>
     <form id="ask">
         <p>Already connected? Enter your username, then approve on your phone.</p>
         <input id="username" autocomplete="username" placeholder="Username" />
@@ -90,5 +93,6 @@
         poll();
     })();
 </script>
+<g:render template="/common/dsmDemo"/>
 </body>
 </html>

@@ -23,4 +23,5 @@ export DATASOURCE_USERNAME=openboxes
 export DATASOURCE_PASSWORD=openboxes
 exec "$JAVA_HOME/bin/java" -Xms512m -Xmx1500m -Djava.awt.headless=true -Dgrails.env=prod \
     -jar "$WAR" "--openboxes.dsm.dataRoot=$ROOT" \
-    "--openboxes.dsm.host.origin=http://127.0.0.1:$INGRESS" "--openboxes.dsm.host.dataDir=$ROOT/ingress"
+    "--openboxes.dsm.host.origin=http://127.0.0.1:$INGRESS" "--openboxes.dsm.host.dataDir=$ROOT/ingress" \
+    "--openboxes.dsm.demo=true"

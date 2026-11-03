@@ -363,6 +363,17 @@ class DsmWalletService {
      *
      * @return the verdict state's name and the outcome it names
      */
+    /** Seats revoked while the account was still settling come back the next time the seats are shown. */
+    void finishReturns() {
+        DsmSeat.findAllByStatus(DsmSeat.STATUS_ASSIGNED).each { DsmSeat seat ->
+            try {
+                refreshSeat(seat)
+            } catch (DsmHostException | DsmCustodyException unsettled) {
+                log.info("seat ${seat.number} comes back later: ${unsettled.message}")
+            }
+        }
+    }
+
     Map refreshSeat(DsmSeat seat) {
         EscrowVerdictRequest request = EscrowVerdictRequest.newBuilder()
                 .setVaultId(ByteString.copyFrom(Base32Crockford.decodeId32(seat.vaultId, "the vault id")))

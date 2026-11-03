@@ -29,10 +29,11 @@ class DsmWalletController {
         attempt {
             DsmWarehouseAccount home = DsmWarehouseAccount.findAllByLocationIsNotNull([sort: "dateCreated", order: "asc", max: 1])[0]
             String ownerDevice = dsmAuthorityService.ownerClaim()?.wallet
+            dsmWalletService.finishReturns()
             [
                     authority   : dsmAuthorityService.objects().collect { dsm.types.proto.AuthoredObjectReadV1 object ->
                         Map<String, String> fields = DsmAuthorityService.parseRecord(object.payload.toStringUtf8())
-                        [kind: fields.kind, wallet: fields.wallet?.take(8), statement: fields.statement, at: fields.at,
+                        [kind: fields.kind, wallet: fields.wallet?.take(8), statement: fields.statement ?: fields.role, at: fields.at,
                          address: Base32Crockford.encode(object.address.toByteArray()).take(10)]
                     }.reverse(),
                     account     : home ? [deviceId: home.deviceId, location: home.location.name] : null,

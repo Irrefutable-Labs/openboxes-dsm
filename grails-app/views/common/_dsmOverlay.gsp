@@ -1,9 +1,10 @@
 <%-- The WEB2/DSM overlay, as Wildstate has it: every step on one timeline, read from this organization's own host and
      process. Press D, or use the button. --%>
+<g:render template="/common/dsmDemo"/>
 <g:if test="${session.user}">
 <style>
     #dsm-ov-btn { position: fixed; right: 16px; bottom: 16px; z-index: 99998; padding: 9px 16px; border: 0; border-radius: 20px; background: #b7791f; color: #fff; font: 700 14px -apple-system, "Segoe UI", sans-serif; cursor: pointer; box-shadow: 0 3px 12px rgba(0,0,0,.35); }
-    #dsm-ov { position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 100vw); z-index: 99999; display: none; flex-direction: column; background: #10131a; color: #eef1f6; font: 13px/1.4 -apple-system, "Segoe UI", sans-serif; box-shadow: -6px 0 24px rgba(0,0,0,.45); }
+    #dsm-ov { position: fixed; top: 0; right: 0; bottom: 96px; width: min(420px, 100vw); z-index: 99999; display: none; flex-direction: column; background: #10131a; color: #eef1f6; font: 13px/1.4 -apple-system, "Segoe UI", sans-serif; box-shadow: -6px 0 24px rgba(0,0,0,.45); }
     #dsm-ov.open { display: flex; }
     #dsm-ov header { padding: 12px 14px; border-bottom: 1px solid #2c3444; display: flex; justify-content: space-between; align-items: center; }
     #dsm-ov header strong { font-size: 15px; }
@@ -14,7 +15,7 @@
     .dsm-tag.web2 { background: #2f6fc4; color: #fff; }
     #dsm-ov-custody { padding: 10px 14px; border-bottom: 1px solid #2c3444; }
     #dsm-ov-custody table { width: 100%; border-collapse: collapse; }
-    #dsm-ov-custody th, #dsm-ov-custody td { padding: 3px 4px; text-align: right; }
+    #dsm-ov-custody th, #dsm-ov-custody td { padding: 3px 4px; text-align: right; color: #eef1f6; font-size: 12px; }
     #dsm-ov-custody th:first-child, #dsm-ov-custody td:first-child { text-align: left; }
     #dsm-ov-custody .dsmc { color: #f0b429; font-weight: 700; } #dsm-ov-custody .webc { color: #7fb3ff; font-weight: 700; }
     #dsm-ov-list { flex: 1; overflow-y: auto; padding: 8px 14px; }
@@ -41,6 +42,32 @@
         function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : v; return d.innerHTML; }
         function usd(v) { return Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' }); }
         function add(html) { var d = document.createElement('div'); d.className = 'dsm-ev dsm-flash'; d.innerHTML = html; list.insertBefore(d, list.firstChild); }
+        // What each step means, for someone watching. Empty: nothing to translate. Null: a read or housekeeping, not worth showing.
+        function plain(e) {
+            var n = e.name || '', t = e.summary || '';
+            if (e.error) return '';
+            if (n === 'connect.app.request') {
+                var sign = t.match(/sign: (.*)/);
+                if (sign) return 'Asked the phone to sign: "' + sign[1] + '"';
+                var pay = t.match(/pay (\d+) of \S+ \(openboxes:([a-z]+)/);
+                if (pay) return pay[2] === 'seats' ? 'Asked the owner\'s phone to release ' + pay[1] + ' seats' : 'Asked the registry\'s phone to approve ' + pay[1] + ' units';
+                if (/prove|holdings/i.test(t)) return 'Asked the partner\'s account to prove what it holds';
+                return 'Asked the phone';
+            }
+            if (n === 'relay: answer') {
+                if (/AwaitingApproval/.test(t)) return 'Now waiting for the person to decide on their phone';
+                if (/CarriedOut/.test(t)) return 'The phone answered: approved and carried out';
+                if (/Declined/.test(t)) return 'Declined on the phone';
+                return null;
+            }
+            if (n === 'relay: accept') return 'A wallet connected';
+            if (n.indexOf('relay:') === 0 || n === 'connect.app.offer' || n === 'faucet.claim') return null;
+            if (n === 'authored.publish') return 'Published a permanent record, signed by this organization\'s account';
+            if (n === 'escrow.lock') return 'Locked one seat in a vault naming the person';
+            if (n === 'escrow.release') return 'The revoked seat came back to the organization';
+            if (/fact|status|sync|read|list|verdict|locked/i.test(n)) return null;
+            return '';
+        }
         function poll() {
             fetch(url + '?after=' + after + '&web2After=' + web2After, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
                 .then(function (r) { return r.ok ? r.json().catch(function () { return null; }) : null; })
@@ -50,6 +77,9 @@
                     after = s.next;
                     s.web2.forEach(function (e) { web2After = Math.max(web2After, e.seq); add('<span class="dsm-tag web2">WEB2</span>' + esc(e.what) + (e.who ? '<div class="meta">' + esc(e.who) + '</div>' : '')); });
                     s.dsm.forEach(function (e) {
+                        var words = plain(e);
+                        if (words === null) return;
+                        if (words) { add('<span class="dsm-tag dsm">DSM</span>' + esc(words)); return; }
                         add('<span class="dsm-tag dsm">DSM</span>' + esc(e.name) + ' ' + esc(e.summary) + (e.error ? '<div class="err">' + esc(e.error) + '</div>' : '<div>' + esc(e.result) + '</div>')
                             + '<div class="meta">' + (e.after != null ? 'position ' + esc(e.before) + ' to ' + esc(e.after) : '') + (e.root ? ', root ' + esc(e.root) : '') + (e.deviceTree ? ', device tree ' + esc(e.deviceTree) : '') + '</div>');
                     });
@@ -63,6 +93,11 @@
         }
         function open() { panel.className = 'open'; poll(); clearInterval(timer); timer = setInterval(poll, 2500); }
         function close() { panel.className = ''; clearInterval(timer); }
+        <g:if test="${grailsApplication.config.getProperty('openboxes.dsm.demo', Boolean, false)}">
+        open();
+        document.body.style.paddingRight = '420px';
+        document.body.style.paddingBottom = '100px';
+        </g:if>
         document.getElementById('dsm-ov-btn').onclick = open;
         document.getElementById('dsm-ov-close').onclick = close;
         document.addEventListener('keydown', function (e) {

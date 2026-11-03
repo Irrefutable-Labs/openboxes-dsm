@@ -36,7 +36,7 @@ class DsmOperationGateInterceptor {
         } catch (DsmCustodyException | DsmHostException unread) {
             return refuse(503, "DSM could not be read, so this cannot go ahead: ${unread.message}", false)
         }
-        return (authority.owner || authority.roles) ?: refuse(403, "DSM shows no authority for this wallet. Sign in with your DSM wallet.", true)
+        return (authority.owner || authority.roles) ?: refuse(403, "Your seat is no longer standing on DSM, so this was refused. Nothing else had to change.", true)
     }
 
     boolean after() {
@@ -51,7 +51,7 @@ class DsmOperationGateInterceptor {
             response.status = status
             render([errorCode: status, errorMessage: why] as JSON)
         } else if (endSession) {
-            redirect(controller: "dsmWalletSignIn", action: "index")
+            redirect(controller: "dsmWalletSignIn", action: "index", params: [refused: "seat"])
         } else {
             response.status = status
             render(text: "<!doctype html><title>Refused</title><h1>Refused</h1><p>${why.encodeAsHTML()}</p>", contentType: "text/html")

@@ -217,7 +217,13 @@ class DsmAuthorityService {
         EscrowVerdictResponse verdict = verdictOf(vault)
         String outcome = verdict.outcome.toStringUtf8()
         if (verdict.state == EscrowVerdictState.ESCROW_VERDICT_STATE_FINAL && outcome in [OUTCOME_REVOKE, OUTCOME_OWNER_REVOKE]) {
-            carryOutReturn(seat, vault, outcome)
+            // She is out from here. The seat itself comes back once the account's latest position has settled, and
+            // whoever next reads this seat takes that step.
+            try {
+                carryOutReturn(seat, vault, outcome)
+            } catch (DsmHostException | DsmCustodyException unsettled) {
+                log.info("seat ${seat.number} comes back later: ${unsettled.message}")
+            }
             return false
         }
         return verdict.state == EscrowVerdictState.ESCROW_VERDICT_STATE_NONE
