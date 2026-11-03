@@ -50,7 +50,7 @@ class DsmWalletService {
      * per wallet alone, or anyone could lock a person out by asking for them first.
      */
     private static final long SIGN_IN_ASK_INTERVAL_MS = 30000L
-    private static final Map<String, Long> LAST_SIGN_IN_ASK = new java.util.concurrent.ConcurrentHashMap<>()
+    private static final Map<String, Long> LAST_SIGN_IN_ASK = new java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     DsmAccountService dsmAccountService
 
