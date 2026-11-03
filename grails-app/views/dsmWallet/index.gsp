@@ -118,6 +118,12 @@
     </div>
 
     <div class="card">
+        <h2>Authority record</h2>
+        <div class="hint">Who owns this organization and every change to who may act, read from the storage nodes, each object signed by this organization's account. Nothing in this application's database can add to it.</div>
+        <table id="authority"></table>
+    </div>
+
+    <div class="card">
         <h2>Custody on record</h2>
         <div class="hint">Verify asks the partner's account to prove what it holds. No access to their systems is involved.</div>
         <table id="transfers"></table>
@@ -160,6 +166,9 @@
                     var attach = document.getElementById('attach');
                     if (attach) attach.onclick = function () { call('attachAccount', {}).then(refresh).catch(function (e) { say(e.message, true); }); };
                 }
+                document.getElementById('authority').innerHTML = '<tr><th>What</th><th>Wallet</th><th>What was signed</th><th>When</th><th>Published at</th></tr>' + s.authority.map(function (a) {
+                    return '<tr><td>' + esc(a.kind) + '</td><td><code>' + esc(a.wallet || '') + '</code></td><td>' + esc(a.statement || '') + '</td><td>' + esc(new Date(Number(a.at)).toLocaleString()) + '</td><td><code>' + esc(a.address) + '</code></td></tr>';
+                }).join('');
                 document.getElementById('wallets').innerHTML = '<tr><th>Wallet</th><th>Device</th><th>Seats</th><th></th></tr>' + s.wallets.map(function (w) {
                     return '<tr><td>' + esc(w.label) + '</td><td><code>' + esc(w.deviceId) + '</code></td><td>' + esc(w.seats) + '</td><td>' + (w.owner ? 'Owner' : '') + '</td></tr>';
                 }).join('');
@@ -197,6 +206,7 @@
                 clearInterval(pollingOffer);
                 pollingOffer = setInterval(function () {
                     call('answered', { offerDigest: o.offerDigest, purpose: purpose }).then(function (a) {
+                        if (a.waiting) say('Approve the claim on your phone: Apps, Waiting.');
                         if (!a.answered) return;
                         clearInterval(pollingOffer);
                         document.getElementById('offer').innerHTML = '';

@@ -390,4 +390,21 @@
         <preConditions onFail="MARK_RAN"><columnExists tableName="dsm_seat" columnName="date_verified"/></preConditions>
         <dropColumn tableName="dsm_seat" columnName="date_verified"/>
     </changeSet>
+    <changeSet author="cryptskii" id="031120260900-0">
+        <preConditions onFail="MARK_RAN"><columnExists tableName="dsm_wallet" columnName="owner"/></preConditions>
+        <dropColumn tableName="dsm_wallet" columnName="owner"/>
+    </changeSet>
+    <changeSet author="cryptskii" id="031120260900-1">
+        <preConditions onFail="MARK_RAN"><not><tableExists tableName="dsm_authority_record"/></not></preConditions>
+        <createTable tableName="dsm_authority_record">
+            <column name="id" type="CHAR(38)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="kind" type="VARCHAR(32)"><constraints nullable="false"/></column>
+            <column name="address" type="VARCHAR(52)"><constraints nullable="false"/></column>
+            <column name="wallet" type="VARCHAR(52)"/>
+            <column name="statement" type="VARCHAR(512)"/>
+            <column name="answer_body" type="MEDIUMBLOB"/>
+            <column name="answer_signature" type="MEDIUMBLOB"/>
+            <column name="date_created" type="DATETIME"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
 </databaseChangeLog>

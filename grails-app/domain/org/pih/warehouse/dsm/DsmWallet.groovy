@@ -26,9 +26,6 @@ class DsmWallet {
     /** Whoever this wallet is, once an authority has given it a seat. */
     User user
 
-    /** The wallet that owns this organization: the authority every other seat descends from. */
-    Boolean owner = Boolean.FALSE
-
     Date dateCreated
     Date lastUpdated
 

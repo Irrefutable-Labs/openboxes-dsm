@@ -22,6 +22,7 @@ class DsmWalletSignInController {
     private static final String BROWSER_CODE_LETTERS = "23456789ABCDEFGHJKMNPQRSTVWXYZ"
     private static final SecureRandom RANDOM = new SecureRandom()
 
+    DsmAuthorityService dsmAuthorityService
     DsmWalletService dsmWalletService
 
     /** The sign-in page, with a fresh code for this browser. */
@@ -90,18 +91,18 @@ class DsmWalletSignInController {
         }
         try {
             DsmWallet wallet = DsmWallet.get(session.dsmSignInWallet)
-            String answer = dsmWalletService.signInAnswer(wallet, session.dsmSignInSeq as long, session.dsmSignInStatement as String)
-            if (answer.startsWith("DECLINED")) {
+            Map answer = dsmWalletService.signatureAnswer(wallet, session.dsmSignInSeq as long, session.dsmSignInStatement as String)
+            if (answer.state == "DECLINED") {
                 session.dsmSignInWallet = null
-                render([state: "DECLINED", reason: answer.substring("DECLINED".length()).trim()] as JSON)
+                render([state: "DECLINED", reason: answer.reason] as JSON)
                 return
             }
-            if (answer == "WAITING") {
+            if (answer.state == "WAITING") {
                 render([state: "WAITING"] as JSON)
                 return
             }
             session.dsmSignInWallet = null
-            finishSignIn(wallet)
+            finishSignIn(wallet, session.dsmSignInStatement as String, answer.body as byte[], answer.signature as byte[])
         } catch (DsmCustodyException | DsmHostException refused) {
             render([state: "FAILED", reason: refused.message] as JSON)
         }
@@ -112,13 +113,19 @@ class DsmWalletSignInController {
         return (1..4).collect { BROWSER_CODE_LETTERS[RANDOM.nextInt(BROWSER_CODE_LETTERS.length())] }.join("")
     }
 
-    private void finishSignIn(DsmWallet wallet) {
+    private void finishSignIn(DsmWallet wallet, String statement, byte[] answerBody, byte[] answerSignature) {
         Map seat = dsmWalletService.signInFor(wallet)
         if (!seat) {
             render([state: "NO_SEAT", deviceId: wallet.deviceId.take(8)] as JSON)
             return
         }
         User user = seat.user as User
+        // What the host's session proved this browser's wallet to be. It lives here, out of reach of any database edit.
+        dsmAuthorityService.record(DsmAuthorityService.KIND_SIGN_IN, [wallet: seat.device as String, user: user.id,
+                                                                      statement: statement ?: "Connected by scanning this browser's code"],
+                answerBody, answerSignature)
+        session.dsmDevice = seat.device
+        session.dsmGenesis = seat.genesis
         session.user = user
         session.userName = user.username
         session.warehouse = seat.location as Location
@@ -141,19 +148,7 @@ class DsmWalletSignInController {
                 render([state: "WAITING"] as JSON)
                 return
             }
-            Map seat = dsmWalletService.signInFor(wallet)
-            if (!seat) {
-                render([state: "NO_SEAT", deviceId: wallet.deviceId.take(8)] as JSON)
-                return
-            }
-            User user = seat.user as User
-            session.user = user
-            session.userName = user.username
-            session.warehouse = seat.location as Location
-            session.timezone = TimeZone.getTimeZone(user.timezone ?: "America/New_York")
-            session.dsmOfferDigest = null
-            session.dsmOfferCode = null
-            render([state: "SIGNED_IN", redirect: createLink(controller: "dashboard", action: "index")] as JSON)
+            finishSignIn(wallet, null, null, null)
         } catch (DsmCustodyException | DsmHostException refused) {
             render([state: "FAILED", reason: refused.message] as JSON)
         }

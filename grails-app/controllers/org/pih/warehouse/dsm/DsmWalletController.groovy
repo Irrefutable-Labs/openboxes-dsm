@@ -16,6 +16,7 @@ import org.pih.warehouse.product.ProductAvailability
  */
 class DsmWalletController {
 
+    DsmAuthorityService dsmAuthorityService
     DsmWalletService dsmWalletService
     DsmAccountService dsmAccountService
     DsmReconcileService dsmReconcileService
@@ -27,12 +28,18 @@ class DsmWalletController {
     def state() {
         attempt {
             DsmWarehouseAccount home = DsmWarehouseAccount.findAllByLocationIsNotNull([sort: "dateCreated", order: "asc", max: 1])[0]
+            String ownerDevice = dsmAuthorityService.ownerClaim()?.wallet
             [
+                    authority   : dsmAuthorityService.objects().collect { dsm.types.proto.AuthoredObjectReadV1 object ->
+                        Map<String, String> fields = DsmAuthorityService.parseRecord(object.payload.toStringUtf8())
+                        [kind: fields.kind, wallet: fields.wallet?.take(8), statement: fields.statement, at: fields.at,
+                         address: Base32Crockford.encode(object.address.toByteArray()).take(10)]
+                    }.reverse(),
                     account     : home ? [deviceId: home.deviceId, location: home.location.name] : null,
                     canAttach   : !home && grailsApplication.config.getProperty("openboxes.dsm.host.origin", String) != null,
-                    me          : walletOfSession()?.with { DsmWallet w -> [id: w.id, owner: w.owner] },
+                    me          : walletOfSession()?.with { DsmWallet w -> [id: w.id, owner: w.deviceId == ownerDevice] },
                     wallets     : DsmWallet.list(sort: "dateCreated").collect { DsmWallet w ->
-                        [id: w.id, label: w.label, deviceId: w.deviceId.take(8), owner: w.owner,
+                        [id: w.id, label: w.label, deviceId: w.deviceId.take(8), owner: w.deviceId == ownerDevice,
                          seats: DsmSeat.countByHolderAndStatus(w, DsmSeat.STATUS_ASSIGNED)]
                     },
                     levels      : DsmAccessLevel.list(sort: "dateCreated").collect { DsmAccessLevel l ->
@@ -72,12 +79,16 @@ class DsmWalletController {
     def answered() {
         attempt {
             String digest = params.offerDigest
-            DsmWallet wallet
             if (params.purpose == "owner") {
-                wallet = dsmWalletService.claimOwnership(digest, User.get(session.user.id))
-            } else {
-                wallet = dsmWalletService.walletAnswering(digest)
+                Map step = dsmWalletService.claimOwnership(digest, User.get(session.user.id), session.dsmOwnerAsk as Map)
+                session.dsmOwnerAsk = step.asked
+                if (step.owner) {
+                    session.dsmDevice = step.device
+                    session.dsmGenesis = step.genesis
+                }
+                return [answered: step.owner == true, waiting: step.asked != null, deviceId: (step.device as String)?.take(8)]
             }
+            DsmWallet wallet = dsmWalletService.walletAnswering(digest)
             if (wallet && params.purpose == "registry") {
                 dsmAccountService.confirmConnection(dsmWalletService.homeAccount(), digest, null, true)
             }
@@ -147,7 +158,7 @@ class DsmWalletController {
     /** Only the owner's wallet moves the books to match DSM. */
     def correctBooks() {
         attempt {
-            if (!walletOfSession()?.owner) {
+            if (!dsmAuthorityService.current().owner) {
                 throw new DsmCustodyException("only the owner corrects the books: sign in with the owner's wallet")
             }
             DsmReconcileEvent event = dsmReconcileService.correctBooks(params.accountId, params.productId, params.reason,
@@ -186,7 +197,7 @@ class DsmWalletController {
     }
 
     private DsmWallet walletOfSession() {
-        return session.user ? DsmWallet.findByUser(User.get(session.user.id)) : null
+        return session.dsmDevice ? DsmWallet.findByDeviceId(session.dsmDevice as String) : null
     }
 
     private void attempt(Closure action) {

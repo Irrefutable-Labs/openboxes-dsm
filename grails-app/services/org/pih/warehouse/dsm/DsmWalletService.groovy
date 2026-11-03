@@ -17,14 +17,11 @@ import dsm.types.proto.ConnectSessionV1
 import dsm.types.proto.EscrowCreatedResponse
 import dsm.types.proto.EscrowLockOutcomeV1
 import dsm.types.proto.EscrowLockRequest
-import dsm.types.proto.EscrowLockedRequest
-import dsm.types.proto.EscrowReleaseRequest
 import dsm.types.proto.EscrowVaultV1
 import dsm.types.proto.EscrowVerdictRequest
 import dsm.types.proto.EscrowVerdictResponse
 import dsm.types.proto.EscrowVerdictState
 import dsm.types.proto.Envelope
-import dsm.types.proto.SofiVaultStatus
 import grails.gorm.transactions.Transactional
 import org.pih.warehouse.core.Location
 import org.pih.warehouse.core.User
@@ -40,8 +37,8 @@ import org.pih.warehouse.dsm.DsmHostClient.Route
 class DsmWalletService {
 
     /** The outcome an assigning authority decides, and the one the owner can decide over any authority. */
-    static final String OUTCOME_REVOKE = "revoke"
-    static final String OUTCOME_OWNER_REVOKE = "revoke-by-owner"
+    static final String OUTCOME_REVOKE = DsmAuthorityService.OUTCOME_REVOKE
+    static final String OUTCOME_OWNER_REVOKE = DsmAuthorityService.OUTCOME_OWNER_REVOKE
 
     /**
      * How often a wallet can be asked to sign in, so nobody can flood a person's phone with requests: once in 30 seconds
@@ -55,6 +52,7 @@ class DsmWalletService {
     private static final Map<String, List<Long>> SIGN_IN_RECENT_BY_WALLET = new HashMap<String, List<Long>>()
 
     DsmAccountService dsmAccountService
+    DsmAuthorityService dsmAuthorityService
 
     // ------------------------------------------------------------------ connecting
 
@@ -92,41 +90,70 @@ class DsmWalletService {
         return wallet
     }
 
-    /** The first wallet an administrator connects becomes the organization's owner, bound to that administrator. */
-    DsmWallet claimOwnership(String offerDigest, User administrator) {
+    /**
+     * The first wallet an administrator connects becomes the organization's owner, once it has signed that on its own phone
+     * and this account has published the claim. Called again as the browser waits: `asked` is what the last call returned.
+     *
+     * @return `owner` once the claim is published, with the proven `device` and `genesis`; otherwise what was asked, if anything
+     */
+    Map claimOwnership(String offerDigest, User administrator, Map asked) {
         DsmWallet wallet = walletAnswering(offerDigest)
-        DsmWallet owner = DsmWallet.findByOwner(true)
-        if (owner) {
-            if (wallet && wallet.id == owner.id) {
-                return owner
+        Map<String, String> claim = dsmAuthorityService.ownerClaim()
+        if (claim) {
+            if (wallet?.deviceId == claim.wallet && claim.user == administrator.id) {
+                return [owner: true, device: wallet.deviceId, genesis: wallet.genesis]
             }
             throw new DsmCustodyException("this organization already has an owner's wallet")
         }
-        if (wallet) {
-            wallet.owner = true
-            wallet.user = administrator
-            wallet.save(failOnError: true, flush: true)
+        if (!wallet) {
+            return [:]
         }
-        return wallet
+        ConnectSessionV1 held = dsmAuthorityService.sessionOf(wallet.sessionId)
+        if (!held) {
+            throw new DsmCustodyException("that wallet's session is not connected")
+        }
+        String device = Base32Crockford.encode(held.peerDeviceId.toByteArray())
+        if (!asked) {
+            String statement = "I own ${homeAccount().location.name} on DSM. Account ${dsmAuthorityService.hostDevice()}. Wallet ${device}. User ${administrator.username}.".toString()
+            return [asked: [seq: askToSign(wallet, statement), statement: statement]]
+        }
+        Map answer = signatureAnswer(wallet, asked.seq as long, asked.statement as String)
+        if (answer.state == "WAITING") {
+            return [asked: asked]
+        }
+        if (answer.state != "SIGNED") {
+            throw new DsmCustodyException("the wallet did not sign the claim: ${answer.reason ?: "declined on the phone"}")
+        }
+        dsmAuthorityService.record(DsmAuthorityService.KIND_OWNER, [
+                wallet    : device,
+                genesis   : Base32Crockford.encode(held.peerGenesis.toByteArray()),
+                signingKey: Base64.encoder.encodeToString(held.peerSigningKey.toByteArray()),
+                user      : administrator.id,
+                statement : asked.statement as String,
+        ], answer.body as byte[], answer.signature as byte[])
+        wallet.user = administrator
+        wallet.save(failOnError: true, flush: true)
+        return [owner: true, device: device, genesis: wallet.genesis]
     }
 
     /**
-     * Who this wallet may sign in as, read now from the storage nodes: the owner, or a holder of at least one seat whose
-     * vault is still Active with no decision against it.
+     * Who this wallet may sign in as, read now: the session the host holds names the wallet, and DSM decides the rest.
      *
-     * @return the user and the location to work at; null when the wallet holds nothing here
+     * @return the user, the location to work at and the proven wallet; null when it holds nothing here
      */
     Map signInFor(DsmWallet wallet) {
-        if (wallet.owner && wallet.user) {
-            return [user: wallet.user, location: homeAccount().location]
-        }
-        List<DsmSeat> standing = DsmSeat.findAllByHolderAndStatus(wallet, DsmSeat.STATUS_ASSIGNED).findAll { DsmSeat seat ->
-            vaultStands(seat)
-        }
-        if (!standing || !wallet.user) {
+        ConnectSessionV1 held = dsmAuthorityService.sessionOf(wallet.sessionId)
+        if (!held || !wallet.user) {
             return null
         }
-        return [user: wallet.user, location: standing.first().location]
+        String device = Base32Crockford.encode(held.peerDeviceId.toByteArray())
+        String genesis = Base32Crockford.encode(held.peerGenesis.toByteArray())
+        Map authority = dsmAuthorityService.authorityOf(device, genesis, wallet.user)
+        if (!authority.owner && !authority.seats) {
+            return null
+        }
+        return [user: wallet.user, device: device, genesis: genesis,
+                location: authority.owner ? homeAccount().location : authority.seats.first().location]
     }
 
     /**
@@ -147,14 +174,17 @@ class DsmWalletService {
             return null
         }
         String statement = "Sign in to ${homeAccount().location.name} as ${user.username}. Browser code ${code}.".toString()
+        return [walletId: wallet.id, seq: askToSign(wallet, statement), statement: statement]
+    }
+
+    private long askToSign(DsmWallet wallet, String statement) {
         ConnectAppRequestIntentV1 intent = ConnectAppRequestIntentV1.newBuilder()
                 .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the session id")))
                 .setSign(ConnectSignV1.newBuilder().setStatement(statement))
                 .build()
-        long seq = DsmSteps.reply(
+        return DsmSteps.reply(
                 dsmAccountService.clientFor(wallet.account).connect("connect.app.request", intent, Route.INVOKE),
                 ConnectReplyV1.ReplyCase.REQUEST, "connect.app.request").request.seq
-        return [walletId: wallet.id, seq: seq, statement: statement]
     }
 
     /** Takes one sign-in ask if the limits allow it, and forgets whatever has aged out, so the record stays bounded. */
@@ -182,7 +212,7 @@ class DsmWalletService {
      *
      * @return PROVEN or WAITING, or DECLINED with the wallet's reason after it
      */
-    String signInAnswer(DsmWallet wallet, long seq, String statement) {
+    Map signatureAnswer(DsmWallet wallet, long seq, String statement) {
         ConnectRequestRefV1 ref = ConnectRequestRefV1.newBuilder()
                 .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the session id")))
                 .setSeq(seq)
@@ -192,12 +222,12 @@ class DsmWalletService {
                 .expect("connect.app.status", envelope, Envelope.PayloadCase.CONNECT_REPLY)
                 .connectReply.status
         if (status.fact == ConnectFact.CONNECT_FACT_SIGNED && status.signedStatement == statement) {
-            return "SIGNED"
+            return [state: "SIGNED", body: status.answerBody.toByteArray(), signature: status.answerSignature.toByteArray()]
         }
         if (status.answered && status.outcome in [ConnectOutcome.CONNECT_OUTCOME_DECLINED, ConnectOutcome.CONNECT_OUTCOME_FAILED]) {
-            return "DECLINED ${status.outcome == ConnectOutcome.CONNECT_OUTCOME_FAILED ? status.reason : ""}".toString().trim()
+            return [state: "DECLINED", reason: status.outcome == ConnectOutcome.CONNECT_OUTCOME_FAILED ? status.reason : ""]
         }
-        return "WAITING"
+        return [state: "WAITING"]
     }
 
     // ------------------------------------------------------------------ levels of access
@@ -261,28 +291,44 @@ class DsmWalletService {
         if (holder.id == authority.id) {
             throw new DsmCustodyException("a seat is assigned by someone with authority over its holder, not by them")
         }
+        Map<String, String> claim = dsmAuthorityService.ownerClaim()
+        if (!claim) {
+            throw new DsmCustodyException("this organization has no owner yet")
+        }
+        ConnectSessionV1 held = dsmAuthorityService.sessionOf(holder.sessionId)
+        if (!held || Base32Crockford.encode(held.peerDeviceId.toByteArray()) != holder.deviceId) {
+            throw new DsmCustodyException("this account's session does not name that wallet")
+        }
         DsmWarehouseAccount home = homeAccount()
+        if (home.deviceId != dsmAuthorityService.hostDevice()) {
+            throw new DsmCustodyException("this account's record names another device than its host")
+        }
+        if (!holder.user) {
+            holder.user = newUser(holder, location, firstName, lastName)
+            holder.save(failOnError: true, flush: true)
+        }
         int number = ((DsmSeat.createCriteria().get {
             eq("level", level)
             projections { max("number") }
         } ?: 0) as int) + 1
-        String agreement = [
-                "openboxes/seat/v1", home.deviceId, level.policyAnchor, number, holder.genesis, holder.deviceId,
-        ].join("|")
+        String agreement = DsmAuthorityService.seatAgreement(home.deviceId, level.policyAnchor, level.roleType, number, location.id,
+                holder.user.id, Base32Crockford.encode(held.peerGenesis.toByteArray()), holder.deviceId)
         ByteString accountDevice = deviceBytes(home.deviceId)
         EscrowLockRequest.Builder lock = EscrowLockRequest.newBuilder()
                 .setExternal(ByteString.copyFromUtf8(agreement))
                 .setTokenPolicyCommit(ByteString.copyFrom(Base32Crockford.decodeId32(level.policyAnchor, "the anchor")))
                 .setAmountEntered("1")
                 .addOutcomes(outcome(OUTCOME_REVOKE, authority.deviceId, accountDevice))
-        DsmWallet owner = DsmWallet.findByOwner(true)
-        if (owner && owner.id != authority.id) {
-            lock.addOutcomes(outcome(OUTCOME_OWNER_REVOKE, owner.deviceId, accountDevice))
+        if (claim.wallet != authority.deviceId) {
+            lock.addOutcomes(outcome(OUTCOME_OWNER_REVOKE, claim.wallet, accountDevice))
         }
         Envelope envelope = dsmAccountService.clientFor(home).invoke("escrow.lock", lock.build())
         EscrowCreatedResponse created = DsmHostClient
                 .expect("escrow.lock", envelope, Envelope.PayloadCase.ESCROW_CREATED_RESPONSE)
                 .escrowCreatedResponse
+        if (created.externalCommitment.toByteArray() != DsmAuthorityService.externalCommitment(agreement)) {
+            throw new DsmCustodyException("DSM committed to something other than this seat's agreement")
+        }
         DsmSeat seat = new DsmSeat(
                 level: level,
                 number: number,
@@ -296,10 +342,10 @@ class DsmWalletService {
                 externalCommitment: Base32Crockford.encode(created.externalCommitment.toByteArray()),
         )
         seat.save(failOnError: true, flush: true)
-        if (!holder.user) {
-            holder.user = newUser(holder, location, firstName, lastName)
-            holder.save(failOnError: true, flush: true)
-        }
+        dsmAuthorityService.record(DsmAuthorityService.KIND_SEAT_ASSIGNED, [
+                seat: number.toString(), level: level.policyAnchor, role: level.roleType, wallet: holder.deviceId,
+                user: holder.user.id, authority: authority.deviceId, vault: seat.vaultId,
+        ])
         return seat
     }
 
@@ -312,64 +358,24 @@ class DsmWalletService {
     }
 
     /**
-     * What the seat's verdict cell says now. Once a revocation is final the account, which that outcome pays, releases
-     * the vault: the seat is back with the organization without the holder's device taking any part.
+     * What the seat's verdict cell says now. Once a revocation is final the account, which that outcome pays, releases the
+     * vault: the seat is back with the organization without the holder's device taking any part.
      *
      * @return the verdict state's name and the outcome it names
      */
     Map refreshSeat(DsmSeat seat) {
-        EscrowVerdictResponse verdict = verdictOf(seat)
-        String outcome = verdict.outcome.toStringUtf8()
-        if (seat.status == DsmSeat.STATUS_ASSIGNED && verdict.state == EscrowVerdictState.ESCROW_VERDICT_STATE_FINAL
-                && outcome in [OUTCOME_REVOKE, OUTCOME_OWNER_REVOKE]) {
-            EscrowReleaseRequest release = EscrowReleaseRequest.newBuilder()
-                    .setVaultId(ByteString.copyFrom(Base32Crockford.decodeId32(seat.vaultId, "the vault id")))
-                    .build()
-            Envelope envelope = dsmAccountService.clientFor(seat.account).invoke("escrow.release", release)
-            DsmHostClient.expect("escrow.release", envelope, Envelope.PayloadCase.SOFI_POSITION_RESPONSE)
-            seat.status = DsmSeat.STATUS_RETURNED
-            seat.dateReturned = new Date()
-            seat.save(failOnError: true, flush: true)
-        }
-        return [state: verdict.state.name().replace("ESCROW_VERDICT_STATE_", ""), outcome: outcome]
-    }
-
-    /** Whether a seat of this wallet's stands, read from the storage nodes now. A revocation found here takes effect here. */
-    boolean seatStands(DsmWallet wallet) {
-        return DsmSeat.findAllByHolderAndStatus(wallet, DsmSeat.STATUS_ASSIGNED).any { DsmSeat seat ->
-            refreshSeat(seat)
-            vaultStands(seat)
-        }
-    }
-
-    /** The vault itself, walked to its head on the storage nodes: Active, one unit, under this seat's commitment, undecided. */
-    boolean vaultStands(DsmSeat seat) {
-        if (seat.status != DsmSeat.STATUS_ASSIGNED || verdictOf(seat).state != EscrowVerdictState.ESCROW_VERDICT_STATE_NONE) {
-            return false
-        }
-        EscrowLockedRequest request = EscrowLockedRequest.newBuilder()
-                .setVerdictCell(ByteString.copyFrom(Base32Crockford.decodeId32(seat.verdictCell, "the verdict cell")))
-                .build()
-        Envelope envelope = dsmAccountService.clientFor(seat.account).invokeQuietly("escrow.locked", request)
-        List<EscrowVaultV1> vaults = DsmHostClient
-                .expect("escrow.locked", envelope, Envelope.PayloadCase.ESCROW_VAULTS_RESPONSE)
-                .escrowVaultsResponse.vaultsList
-        return vaults.any { EscrowVaultV1 vault ->
-            Base32Crockford.encode(vault.vaultId.toByteArray()) == seat.vaultId &&
-                    vault.status == SofiVaultStatus.SOFI_VAULT_STATUS_ACTIVE &&
-                    vault.amount == 1L &&
-                    Base32Crockford.encode(vault.externalCommitment.toByteArray()) == seat.externalCommitment &&
-                    Base32Crockford.encode(vault.tokenPolicyCommit.toByteArray()) == seat.level.policyAnchor
-        }
-    }
-
-    private EscrowVerdictResponse verdictOf(DsmSeat seat) {
         EscrowVerdictRequest request = EscrowVerdictRequest.newBuilder()
                 .setVaultId(ByteString.copyFrom(Base32Crockford.decodeId32(seat.vaultId, "the vault id")))
                 .build()
-        Envelope envelope = dsmAccountService.clientFor(seat.account).invokeQuietly("escrow.verdict", request)
-        return DsmHostClient.expect("escrow.verdict", envelope, Envelope.PayloadCase.ESCROW_VERDICT_RESPONSE)
-                .escrowVerdictResponse
+        EscrowVerdictResponse verdict = DsmHostClient.expect("escrow.verdict", dsmAuthorityService.hostClient().invokeQuietly("escrow.verdict", request),
+                Envelope.PayloadCase.ESCROW_VERDICT_RESPONSE).escrowVerdictResponse
+        String outcome = verdict.outcome.toStringUtf8()
+        if (seat.status == DsmSeat.STATUS_ASSIGNED && verdict.state == EscrowVerdictState.ESCROW_VERDICT_STATE_FINAL
+                && outcome in [OUTCOME_REVOKE, OUTCOME_OWNER_REVOKE]) {
+            dsmAuthorityService.carryOutReturn(seat, EscrowVaultV1.newBuilder()
+                    .setVaultId(ByteString.copyFrom(Base32Crockford.decodeId32(seat.vaultId, "the vault id"))).build(), outcome)
+        }
+        return [state: verdict.state.name().replace("ESCROW_VERDICT_STATE_", ""), outcome: outcome]
     }
 
     // ------------------------------------------------------------------ what a seat gives in OpenBoxes

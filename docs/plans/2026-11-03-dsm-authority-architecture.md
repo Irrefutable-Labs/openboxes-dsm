@@ -18,8 +18,13 @@ operational application. Synchronizing OpenBoxes is never what settles anything.
 | Every request by a seat holder reads the vault from the storage nodes, with no timer or local copy | Built; *measured*: about 1.1 s per request, steady over 3 minutes, plus one 32 s request not explained |
 | Revocation | The holder's very next request gets 403 and the session ends, with no job running and nobody pressing anything; *measured*: that request took 21 s, because it also carries out the return. A new sign-in gets `NO_SEAT` |
 | DSM unreadable | Refused with 503 and the session kept; *measured* by freezing the host, after the 120 s client timeout. A freeze shorter than that only delays the request |
-| Roles | From DSM alone, in the `User` domain, so every reader gets the same answer; *measured*: superuser rows written for a seat holder gave nothing |
-| A revoked seat's row written back to `ASSIGNED` | Sign-in still gets `NO_SEAT`, because the vault decides; *measured* |
+| Roles | From DSM alone, in the `User` domain, so every reader gets the same answer. Only the signed-in person's are answered: another person's read as none. *Measured*: superuser rows written for a seat holder gave nothing |
+| Owner authority | The first owner's claim this account published, signed on the owner's phone first, read from the storage nodes. The database column is gone. *Measured*: a forged database record gave nothing, and after a restart with it in place the owner and the refusal of passwords stood |
+| Which wallet a browser is | Named by the session the host holds, kept in the web session from sign-in. *Measured*: with two wallet rows swapped, the other wallet signing as `admin` got `NO_SEAT` |
+| Seat to vault | A seat counts only if a vault this account owns stands, with a commitment recomputed here over the organization, token, role, seat, location, person and proven wallet. *Measured*: raising a level's role in the database took access away; a revoked seat's row written back to `ASSIGNED`, and another person's seat handed over with its agreement rewritten, each got `NO_SEAT`. The recomputed commitment matches DSM's on a live vault |
+| Revocation | The vault's own terms must let the owner's key decide it. *Measured*: decided on the owner's phone, the holder's next request was refused and the return published. Whether a holder can decide their own seat was **not shown**: the second wallet stopped earlier, at a token it had not added |
+| Host of record | Authority reads the host from the launch settings. *Measured*: an account row pointed at another host is refused |
+| Audit | Owner claims, sign-ins, seats assigned and returned are objects this account publishes, shown on the DSM screen from the storage nodes. If DSM cannot take one, the change does not go ahead. A wallet's 49,856-byte signature does not fit, so the object holds its digest and this database holds the signature |
 | Stock transaction written, changed or deleted anywhere in an organization on DSM, outside a DSM-backed flow | Refused; *measured* through GORM at a DSM warehouse, with a grant as the control |
 | Record dated before a stock count | Refused before DSM moves; *measured* for a shipment, read only for receipts and stock changes |
 | Record with no date | Refused before DSM moves; read only, not run live |
@@ -206,11 +211,15 @@ carriers are their own organizations. Until the device tree is built, accountabi
 - Sign-in rests on the person comparing a code. The signature covers the words and the wallet shows them, but someone who
   approves without reading can still sign in a browser they do not control. It proves the wallet's key signed after approval on
   that device, not who pressed. The signature is not saved or published, so sign-ins are not yet an auditable record.
-- **Which row says who holds authority is still a local database row.** The owner flag, and the binding of a seat row to its
-  vault, can be edited by anyone with direct database access. Pointing a person's seat row at another standing vault was not
-  attacked and would probably pass. Closing this needs the account record head (section 5).
-- An owner's wallet holds no seat, so nothing here revokes the owner, and the owner's requests read nothing from DSM.
-- A seat holder pays about 1.1 s per request, and a page with many calls pays it for each. A DSM outage makes a request wait up
+- **Whoever controls the host holds the account's keys,** and can publish a claim or lock a vault. Everything above stops someone with the database, not someone with the host.
+- **The first claim wins,** and it needs an administrator's session while passwords still work. Someone with the database before an owner exists can set that password and claim first. There is no way to transfer or revoke ownership, so a lost owner's wallet needs a new organization.
+- **Assigning a seat is signed by the account, not the person's wallet.** The vault's terms and the published record name who assigned it, but no phone approves it.
+- **Not attacked live:** a seat row pointing at a vault from another account or token, which the checks refuse by reading the code only.
+- **Not yet run on this path:** stock and shipments on a fresh organization. Another person's roles now read as none, so any feature that looks up someone else's role sees nothing, such as a list of approvers; these were not tested.
+- A failure publishing a seat's record leaves a locked vault with no row. It shows only in the supply count.
+- The stock guard and the reconciler still read account rows. Deleting a row blinds them, though not the authority checks.
+- An owner's wallet holds no seat, so nothing here revokes the owner. Their claim is read once from the storage nodes and held in memory until restart, because it never changes.
+- A seat holder paid about 1.1 s per request when measured, before these checks changed, and a page with many calls pays it for each. A DSM outage makes a request wait up
   to 120 s before it is refused, and seat holders cannot use OpenBoxes during it. Offline handoffs are a separate path that
   settles between devices and syncs afterwards, and are not built.
 - Roles from a seat are organization-wide. A seat names a location, but the role is not limited to it.

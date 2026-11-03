@@ -51,6 +51,12 @@ class DsmAccountService {
     }
 
     DsmHostClient clientFor(DsmWarehouseAccount account) {
+        // A row must not be able to send this server to another host.
+        String origin = grailsApplication.config.getProperty("openboxes.dsm.host.origin", String)
+        String dataDir = grailsApplication.config.getProperty("openboxes.dsm.host.dataDir", String)
+        if (origin && (account.ingressOrigin != origin || account.dataDir != dataDir)) {
+            throw new DsmCustodyException("this account's record names a host other than the one this server was started with")
+        }
         return new DsmHostClient(account.ingressOrigin, new File(account.dataDir))
     }
 

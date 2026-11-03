@@ -504,6 +504,7 @@ dependencies {
     // security patch
     compile 'com.google.code.gson:gson:2.10.1'
 
+    compile "org.bouncycastle:bcprov-jdk15on:1.70"  // BLAKE3, to recompute a DSM vault's commitment
     compile "com.google.protobuf:protobuf-java:${protobufVersion}"  // the DSM wire (src/main/proto/dsm_app.proto)
 
     // expose javax.annotation.Nullable, com.google.common.base.Enums, etc.
