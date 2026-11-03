@@ -67,15 +67,28 @@ def seed(instance, warehouse, partner, products, category_name):
     instance.wait_up()
     instance.call("POST", "/api/generic/location/1", json_body={"name": warehouse})
     instance.call("POST", "/api/generic/location/2", json_body={"name": partner})
-    category = instance.call("POST", "/api/generic/category/", json_body={"name": category_name})
-    kind = instance.call("GET", "/api/generic/productType/")[0]
-    for code, name, price in products:
-        instance.call("POST", "/api/generic/product/", json_body={
-            "name": name, "productCode": code, "category": {"id": category["id"]}, "productType": {"id": kind["id"]},
-            "pricePerUnit": price, "unitOfMeasure": "each"})
-    instance.call("POST", "/dsmWallet/attachAccount", form={})
+    held = {p.get("productCode") for p in instance.call("GET", "/api/generic/product/?max=100")}
+    if not all(code in held for code, _, _ in products):
+        category = instance.call("POST", "/api/generic/category/", json_body={"name": category_name})
+        kind = instance.call("GET", "/api/generic/productType/")[0]
+        for code, name, price in products:
+            if code not in held:
+                instance.call("POST", "/api/generic/product/", json_body={
+                    "name": name, "productCode": code, "category": {"id": category["id"]},
+                    "productType": {"id": kind["id"]}, "pricePerUnit": price, "unitOfMeasure": "each"})
+    if not instance.call("GET", "/api/dsm/accounts"):
+        instance.call("POST", "/dsmWallet/attachAccount", form={})
     account = instance.call("GET", "/api/dsm/accounts")[0]
-    instance.call("POST", "/api/dsm/accounts/fees", form={"accountId": account["id"]})
+    # The faucet is the live network's, and answers "retry later" while others are claiming.
+    for attempt in range(12):
+        try:
+            instance.call("POST", "/api/dsm/accounts/fees", form={"accountId": account["id"]})
+            break
+        except SystemExit as busy:
+            print("   the faucet is busy, trying again:", str(busy)[-90:], flush=True)
+            time.sleep(20)
+    else:
+        raise SystemExit(instance.name + ": the faucet never answered")
     print("   account", account["deviceId"][:12], "attached and funded", flush=True)
 
 

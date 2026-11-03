@@ -68,10 +68,55 @@
         <button id="assign">Assign seat</button>
         <table id="seats"></table>
     </div>
+
+    <div class="card">
+        <h2>Partner organizations</h2>
+        <div class="hint">One side shows a code, the other enters it. Each chooses the location that stands for the other in its own records.</div>
+        <select id="partner-location">
+            <g:each in="${locations}" var="location"><option value="${location.id}">${location.name}</option></g:each>
+        </select>
+        <button id="partner-offer">Show our code</button>
+        <input id="partner-code" placeholder="Or enter their code" size="50"/>
+        <button id="partner-accept">Connect to them</button>
+        <div id="partner-out" class="hint"></div>
+        <table id="partners"></table>
+    </div>
+
+    <div class="card">
+        <h2>Products on DSM</h2>
+        <div class="hint">The registry creates each product's token in its wallet. Paste its anchor here against your own product.</div>
+        <select id="token-product"></select>
+        <input id="token-anchor" placeholder="The token's anchor" size="44"/>
+        <button id="adopt">Adopt token</button>
+        <table id="tokens"></table>
+    </div>
+
+    <div class="card">
+        <h2>Admit stock</h2>
+        <div class="hint">Stock enters custody only after the registry approves it on its own phone. Name the document that says the goods exist.</div>
+        <select id="admit-product"></select>
+        <input id="admit-quantity" placeholder="Units" size="6"/>
+        <input id="admit-reference" placeholder="Goods-received note" size="22"/>
+        <button id="admit">Ask the registry</button>
+        <table id="admissions"></table>
+    </div>
+
+    <div class="card">
+        <h2>Arrived from partners</h2>
+        <div class="hint">What this organization's own DSM account holds from partners, before anyone here has recorded it.</div>
+        <button class="plain" id="inbound-check">Check now</button>
+        <table id="inbound"></table>
+    </div>
+
+    <div class="card">
+        <h2>Custody on record</h2>
+        <div class="hint">Verify asks the partner's account to prove what it holds. No access to their systems is involved.</div>
+        <table id="transfers"></table>
+    </div>
 </div>
 <script>
     (function () {
-        var base = '${createLink(controller: 'dsmWallet')}/';
+        var base = '${request.contextPath}/dsmWallet/';
         var message = document.getElementById('dsm-message');
         function say(text, bad) { message.textContent = text || ''; message.className = bad ? 'bad' : 'good'; }
         function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : v; return d.innerHTML; }
@@ -147,6 +192,97 @@
                 }, 2500);
             }).catch(function (x) { say(x.message, true); });
         };
+        var api = '${request.contextPath}/api/';
+        function apiCall(path, form) {
+            var init = { credentials: 'same-origin', headers: { Accept: 'application/json' } };
+            if (form) { init.method = 'POST'; init.body = new URLSearchParams(form); }
+            return fetch(api + path, init).then(function (r) {
+                return r.json().catch(function () { return {}; }).then(function (j) {
+                    if (!r.ok) throw new Error(j.errorMessage || ('The server answered ' + r.status));
+                    return j.data;
+                });
+            });
+        }
+        function fail(x) { say(x.message, true); }
+        function accountId() { return apiCall('dsm/accounts').then(function (a) { return a.filter(function (x) { return x.locationId; })[0].id; }); }
+        function business() {
+            apiCall('dsm/connections').then(function (rows) {
+                document.getElementById('partners').innerHTML = '<tr><th>Partner</th><th>Device</th><th>Side</th></tr>' + rows.filter(function (c) { return !c.peerRegistry; }).map(function (c) {
+                    return '<tr><td>' + esc(c.peerName) + '</td><td><code>' + esc(c.peerDeviceId.slice(0, 8)) + '</code></td><td>' + esc(c.side) + '</td></tr>';
+                }).join('');
+            }).catch(fail);
+            apiCall('generic/product/?max=100').then(function (rows) {
+                var list = rows.map(function (p) { return { id: p.id, label: p.productCode + ' ' + p.name }; });
+                options('token-product', list, function (p) { return p.label; });
+                options('admit-product', list, function (p) { return p.label; });
+            }).catch(fail);
+            apiCall('dsm/tokens').then(function (rows) {
+                document.getElementById('tokens').innerHTML = '<tr><th>Product</th><th>Token</th><th>Held here</th></tr>' + rows.map(function (t) {
+                    return '<tr><td>' + esc(t.productCode) + '</td><td>' + esc(t.ticker) + '</td><td>' + esc(t.holdings.map(function (h) { return h.available; }).join(', ')) + '</td></tr>';
+                }).join('');
+            }).catch(fail);
+            apiCall('dsm/admissions').then(function (rows) {
+                document.getElementById('admissions').innerHTML = '<tr><th>Document</th><th>Units</th><th>Recorded</th><th>Status</th></tr>' + rows.map(function (a) {
+                    return '<tr><td>' + esc(a.reference) + '</td><td>' + esc(a.quantity) + '</td><td>' + esc(a.quantityDrawn) + '</td><td>' + esc(a.status) + '</td></tr>';
+                }).join('');
+            }).catch(fail);
+            apiCall('dsm/transfers').then(function (rows) {
+                document.getElementById('transfers').innerHTML = '<tr><th>What</th><th>Product</th><th>Units</th><th>Document</th><th>Proven</th><th></th></tr>' + rows.map(function (t) {
+                    return '<tr><td>' + esc(t.kind) + '</td><td>' + esc(t.productCode) + '</td><td>' + esc(t.quantity) + '</td><td>' + esc(t.memo) + '</td><td>' + esc(t.provenAmount) + '</td><td>' + (t.kind === 'SHIPMENT' ? '<button class="plain" data-prove="' + esc(t.id) + '">Verify partner</button>' : '') + '</td></tr>';
+                }).join('');
+            }).catch(fail);
+        }
+        function inbound() {
+            return apiCall('dsm/inbound').then(function (rows) {
+                document.getElementById('inbound').innerHTML = '<tr><th>From</th><th>Their document</th><th>Lines</th><th></th></tr>' + rows.map(function (d) {
+                    return '<tr><td>' + esc(d.originName) + '</td><td>' + esc(d.memo) + '</td><td>' + esc(d.lines.map(function (l) { return l.quantity + ' ' + l.productCode; }).join(', ')) + '</td><td><button data-peer="' + esc(d.peerDeviceId) + '" data-memo="' + esc(d.memo) + '">Take in</button></td></tr>';
+                }).join('');
+            }).catch(fail);
+        }
+        document.addEventListener('click', function (e) {
+            if (!e.target.getAttribute) return;
+            var prove = e.target.getAttribute('data-prove');
+            if (prove) {
+                say('Asking the partner\'s account to prove what it holds.');
+                apiCall('dsm/transfers/' + prove + '/proof', {}).then(function (t) { say('Proven: they hold ' + t.provenAmount + ' units.'); business(); }).catch(fail);
+            }
+            var memo = e.target.getAttribute('data-memo');
+            if (memo) {
+                apiCall('dsm/inbound', { peerDeviceId: e.target.getAttribute('data-peer'), memo: memo }).then(function (s) {
+                    say('Taken in as shipment ' + s.shipmentNumber + '.');
+                    window.location = '${request.contextPath}/partialReceiving/create/' + s.shipmentId;
+                }).catch(fail);
+            }
+        });
+        document.getElementById('partner-offer').onclick = function () {
+            var location = val('partner-location');
+            accountId().then(function (id) {
+                return apiCall('dsm/connections/offers', { accountId: id }).then(function (o) {
+                    document.getElementById('partner-out').innerHTML = 'Give them this code: <code>' + esc(o.code) + '</code>';
+                    say('Waiting for them to connect.');
+                    return apiCall('dsm/connections/confirmations', { accountId: id, offerDigest: o.offerDigest, peerLocationId: location }).then(function (c) {
+                        say('Connected to ' + c.peerDeviceId.slice(0, 8) + '.'); business();
+                    });
+                });
+            }).catch(fail);
+        };
+        document.getElementById('partner-accept').onclick = function () {
+            accountId().then(function (id) {
+                return apiCall('dsm/connections/accepts', { accountId: id, code: val('partner-code').trim(), peerLocationId: val('partner-location') });
+            }).then(function () { say('Connected.'); business(); }).catch(fail);
+        };
+        document.getElementById('adopt').onclick = function () {
+            apiCall('dsm/tokens/adoptions', { productId: val('token-product'), policyAnchor: val('token-anchor').trim() })
+                .then(function (t) { say('Adopted ' + t.ticker + '.'); business(); }).catch(fail);
+        };
+        document.getElementById('admit').onclick = function () {
+            accountId().then(function (id) {
+                return apiCall('dsm/admissions', { accountId: id, productId: val('admit-product'), quantity: val('admit-quantity'), reference: val('admit-reference') });
+            }).then(function () { say('Asked. It waits on the registry\'s phone under Apps, Waiting.'); business(); }).catch(fail);
+        };
+        document.getElementById('inbound-check').onclick = inbound;
+        business();
+        setInterval(function () { refresh(); business(); }, 15000);
         document.getElementById('add-level').onclick = function () {
             call('addLevel', { name: val('level-name'), roleType: val('level-role'), policyAnchor: val('level-anchor').trim(), creatorId: val('level-creator') })
                 .then(function () { say('Level added.'); return refresh(); }).catch(function (x) { say(x.message, true); });
