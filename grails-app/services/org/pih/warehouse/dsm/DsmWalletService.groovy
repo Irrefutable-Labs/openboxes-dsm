@@ -45,7 +45,10 @@ class DsmWalletService {
     static final String OUTCOME_REVOKE = "revoke"
     static final String OUTCOME_OWNER_REVOKE = "revoke-by-owner"
 
-    /** How often one wallet can be asked to sign in, so nobody can flood a person's phone with requests. */
+    /**
+     * How often one client can ask one wallet to sign in, so nobody can flood a person's phone with requests. It is not
+     * per wallet alone, or anyone could lock a person out by asking for them first.
+     */
     private static final long SIGN_IN_ASK_INTERVAL_MS = 30000L
     private static final Map<String, Long> LAST_SIGN_IN_ASK = new java.util.concurrent.ConcurrentHashMap<>()
 
@@ -136,18 +139,17 @@ class DsmWalletService {
      *
      * @return the session and the request's number; null for a name no wallet here is bound to, or one asked too recently
      */
-    Map askToSignIn(String username) {
+    Map askToSignIn(String username, String client) {
         User user = username?.trim() ? User.findByUsernameOrEmail(username.trim(), username.trim()) : null
         DsmWallet wallet = user ? DsmWallet.findByUser(user) : null
         if (!wallet) {
             return null
         }
-        long now = System.currentTimeMillis()
-        Long last = LAST_SIGN_IN_ASK.get(wallet.id)
-        if (last != null && now - last < SIGN_IN_ASK_INTERVAL_MS) {
+        String asker = "${wallet.id}|${client}".toString()
+        Long last = LAST_SIGN_IN_ASK.get(asker)
+        if (last != null && System.currentTimeMillis() - last < SIGN_IN_ASK_INTERVAL_MS) {
             return null
         }
-        LAST_SIGN_IN_ASK.put(wallet.id, now)
         // DSM requires a holdings request to name a token, and every wallet can prove what it holds of ERA, the
         // network's own token. What is proven is who answered, not how much they hold.
         BalanceGetResponse era = balanceRows(wallet.account).find { BalanceGetResponse row -> row.symbol == "ERA" }
@@ -163,6 +165,7 @@ class DsmWalletService {
         long seq = DsmSteps.reply(
                 dsmAccountService.clientFor(wallet.account).connect("connect.app.request", intent, Route.INVOKE),
                 ConnectReplyV1.ReplyCase.REQUEST, "connect.app.request").request.seq
+        LAST_SIGN_IN_ASK.put(asker, System.currentTimeMillis())
         return [walletId: wallet.id, seq: seq]
     }
 

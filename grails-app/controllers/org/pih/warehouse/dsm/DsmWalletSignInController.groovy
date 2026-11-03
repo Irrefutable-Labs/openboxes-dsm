@@ -46,9 +46,12 @@ class DsmWalletSignInController {
     /** A connected wallet's person names themselves; their phone is asked. The answer is the same for any name. */
     def ask() {
         try {
-            Map asked = dsmWalletService.askToSignIn(params.username)
-            session.dsmSignInWallet = asked?.walletId
-            session.dsmSignInSeq = asked?.seq
+            Map asked = dsmWalletService.askToSignIn(params.username, request.remoteAddr)
+            // Nothing new was asked: a request this browser is already waiting on stays.
+            if (asked) {
+                session.dsmSignInWallet = asked.walletId
+                session.dsmSignInSeq = asked.seq
+            }
             render([state: "ASKED"] as JSON)
         } catch (DsmCustodyException | DsmHostException refused) {
             render([state: "FAILED", reason: refused.message] as JSON)
