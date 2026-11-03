@@ -364,4 +364,26 @@
         <preConditions onFail="MARK_RAN"><not><columnExists tableName="dsm_seat" columnName="date_verified"/></not></preConditions>
         <addColumn tableName="dsm_seat"><column name="date_verified" type="DATETIME"/></addColumn>
     </changeSet>
+    <changeSet author="cryptskii" id="031120260300-0">
+        <preConditions onFail="MARK_RAN"><not><tableExists tableName="dsm_reconcile_event"/></not></preConditions>
+        <createTable tableName="dsm_reconcile_event">
+            <column name="id" type="CHAR(38)"><constraints nullable="false" primaryKey="true"/></column>
+            <column name="kind" type="VARCHAR(16)"><constraints nullable="false"/></column>
+            <column name="account_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="product_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="dsm_holding" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="undrawn" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="in_transit" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="books" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="cached" type="BIGINT"/>
+            <column name="gap" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="note" type="VARCHAR(512)"/>
+            <column name="recorded_by_id" type="CHAR(38)"/>
+            <column name="transaction_number" type="VARCHAR(255)"/>
+            <column name="signed_address" type="VARCHAR(52)"/>
+            <column name="date_created" type="DATETIME"><constraints nullable="false"/></column>
+        </createTable>
+        <addForeignKeyConstraint baseColumnNames="account_id" baseTableName="dsm_reconcile_event" constraintName="fk_dsm_reconcile_account" referencedColumnNames="id" referencedTableName="dsm_warehouse_account"/>
+        <addForeignKeyConstraint baseColumnNames="product_id" baseTableName="dsm_reconcile_event" constraintName="fk_dsm_reconcile_product" referencedColumnNames="id" referencedTableName="product"/>
+    </changeSet>
 </databaseChangeLog>

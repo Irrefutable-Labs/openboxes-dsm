@@ -26,7 +26,9 @@ operational application. Synchronizing OpenBoxes is never what settles anything.
 | Receipt refused above what DSM moved | Built; *measured*, surfaced as HTTP 500 |
 | Custody proof of a partner's holdings, no access to its systems | Built; *measured* |
 | Ownership separate from custody; carriers | **Not built.** A balance is both |
-| Commitments of database records; reconciliation; detecting direct edits | **Not built** |
+| Books compared with DSM each minute, findings signed and append-only, correction from DSM by the owner | Built; *measured* (section 2) |
+| Direct edits to stock transactions or the availability table, when they change a total | Detected; *measured* |
+| Commitments of individual database records; edits that leave totals unchanged or sit behind a count | **Not built** |
 | Offline handoffs through OpenBoxes | **Not built** |
 | Signed discrepancy reports | **Not built** |
 
@@ -45,6 +47,12 @@ server rejects only future ship dates (`ShipmentService.groovy:1130`), and `rele
 DSM was right and OpenBoxes was wrong, and nothing noticed. The invariant that would have caught it is simple:
 
     DSM holding = undrawn admissions + books on hand        (460 = 399 + 61, books say 101)
+
+**Resolved 2026-11-03.** `DsmReconcileService` runs that check each minute, also counting units here but not yet received,
+and reads the books from the stock transactions rather than the availability table. It found the gap itself: DSM 440, undrawn
+399, books 81, gap +40, worth $736.00. That finding stays on the record, as signed object `EP1VYMAGGN…`, read back from two
+storage nodes. The owner's wallet session then matched the books to DSM with a new adjustment, `SKW-12G-TS6`, naming why. DSM
+was not moved.
 
 ## 3. Findings the design must answer
 
@@ -175,7 +183,7 @@ carriers are their own organizations. Until the device tree is built, accountabi
 1. **Close the holes (OpenBoxes only). Done, with the gaps listed in section 7.** One fail-closed rule now covers stock writes
    at a DSM warehouse (`DsmStockWrites`), with the generic API gated, rollback refused, backdating refused before DSM moves, a
    seat watcher, an operation gate, clean refusals, and tokens with burn on.
-2. **Reconcile.** The invariant in section 2 running continuously, with discrepancies shown.
+2. **Reconcile. Done,** with the limits listed in section 7.
 3. **Finish the demo:** second wallet, sample USD scenario, overlay, recording steps.
 4. **DSM's signing request,** if the owner approves it.
 5. **Custody and ownership,** with one carrier, online; then offline per the owner's decision.
@@ -192,7 +200,14 @@ carriers are their own organizations. Until the device tree is built, accountabi
 - A seat holder is refused once no reading is newer than 120 s (`openboxes.dsm.seat.maxVerifiedAgeSeconds`). So a network
   outage locks seat holders out of OpenBoxes, which conflicts with working offline and needs a decision before offline work.
 - An owner's wallet holds no seat, so nothing here revokes the owner.
-- Northgate's AMX500 books still overstate by 40. The refusals stop it recurring; correcting it needs step 2.
+- The reconciler compares totals. An edit that leaves a total unchanged (such as moving units between lots), an edit behind a
+  stock count, and changes to lots, expiry dates, prices or permissions are invisible to it.
+- A finding's signature proves who said it, not that nothing was withheld: `authored.publish` has no completeness proof, and
+  whoever controls an organization's server can keep it quiet. Its own table can be edited with direct SQL, though a published
+  copy would still exist on the storage nodes. Findings are signed by the organization's account, not a person; the
+  correction records the signed-in user only in OpenBoxes.
+- A correction trusts that DSM is right about custody. A real physical shortage is a count, which burns units, and nothing yet
+  checks that a person chose the right one.
 - A database superuser who also controls the application host can act between commits.
 - OpenBoxes' write-path counts come from a static reading, and the generic API findings were not executed.
 - What triggered the first retry on the jammed reserve cell is still unknown.

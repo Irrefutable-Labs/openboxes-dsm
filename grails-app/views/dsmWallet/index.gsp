@@ -109,6 +109,15 @@
     </div>
 
     <div class="card">
+        <h2>DSM and the books</h2>
+        <div class="hint">Books on hand should equal DSM's holding, less admitted units not yet recorded and units here not yet received. The books are added up from the stock transactions, every minute.</div>
+        <button class="plain" id="check-now">Check now</button>
+        <table id="reconcile"></table>
+        <h2 style="margin-top:14px">Findings, newest first. Nothing here is ever changed.</h2>
+        <table id="findings"></table>
+    </div>
+
+    <div class="card">
         <h2>Custody on record</h2>
         <div class="hint">Verify asks the partner's account to prove what it holds. No access to their systems is involved.</div>
         <table id="transfers"></table>
@@ -286,6 +295,26 @@
             }).then(function () { say('Asked. It waits on the registry\'s phone under Apps, Waiting.'); business(); }).catch(fail);
         };
         document.getElementById('inbound-check').onclick = inbound;
+        function showReconcile(data) {
+            document.getElementById('reconcile').innerHTML = '<tr><th>Where</th><th>Product</th><th>DSM</th><th>Admitted, unrecorded</th><th>In transit</th><th>Books</th><th>Gap</th><th>Value of gap</th><th></th></tr>' + data.rows.map(function (r) {
+                return '<tr' + (r.gap ? ' class="bad"' : '') + '><td>' + esc(r.location) + '</td><td>' + esc(r.productCode) + '</td><td>' + esc(r.dsmHolding) + '</td><td>' + esc(r.undrawn) + '</td><td>' + esc(r.inTransit) + '</td><td>' + esc(r.books) + '</td><td>' + (r.gap > 0 ? '+' : '') + esc(r.gap) + '</td><td>' + (r.gap ? esc(Number(r.value).toLocaleString('en-US', { style: 'currency', currency: 'USD' })) : '') + '</td><td>' + (r.gap ? '<input size="26" placeholder="Why" id="why-' + esc(r.productId) + '"/><button class="plain" data-correct="' + esc(r.productId) + '" data-account="' + esc(r.accountId) + '">Match the books to DSM</button>' : 'Agrees') + '</td></tr>';
+            }).join('');
+            document.getElementById('findings').innerHTML = '<tr><th>When</th><th>What</th><th>Where</th><th>Product</th><th>Gap</th><th>By</th><th>Why, or its record</th><th>Signed</th></tr>' + data.events.map(function (e) {
+                return '<tr><td>' + esc(e.at) + '</td><td>' + esc(e.kind) + '</td><td>' + esc(e.location) + '</td><td>' + esc(e.productCode) + '</td><td>' + esc(e.gap) + '</td><td>' + esc(e.by) + '</td><td>' + esc([e.note, e.transactionNumber].filter(Boolean).join(', ')) + '</td><td>' + (e.signedAddress ? '<code>' + esc(e.signedAddress.slice(0, 10)) + '</code>' : 'Not signed') + '</td></tr>';
+            }).join('');
+        }
+        function reconcile() { call('reconcile').then(showReconcile).catch(fail); }
+        document.getElementById('check-now').onclick = function () {
+            say('Comparing the books with DSM.');
+            call('checkNow', {}).then(function (d) { say('Compared.'); showReconcile(d); }).catch(fail);
+        };
+        document.addEventListener('click', function (e) {
+            var product = e.target.getAttribute && e.target.getAttribute('data-correct');
+            if (!product) return;
+            call('correctBooks', { accountId: e.target.getAttribute('data-account'), productId: product, reason: val('why-' + product) })
+                .then(function (r) { say('Corrected by adjustment ' + r.transactionNumber + '.'); reconcile(); }).catch(fail);
+        });
+        reconcile();
         business();
         setInterval(function () { refresh(); business(); }, 15000);
         document.getElementById('add-level').onclick = function () {

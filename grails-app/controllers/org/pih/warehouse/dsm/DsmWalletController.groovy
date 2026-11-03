@@ -18,6 +18,7 @@ class DsmWalletController {
 
     DsmWalletService dsmWalletService
     DsmAccountService dsmAccountService
+    DsmReconcileService dsmReconcileService
 
     def index() {
         [locations: Location.list().findAll { Location location -> !location.parentLocation }]
@@ -132,6 +133,42 @@ class DsmWalletController {
                     custody       : custody(),
             ]
         }
+    }
+
+    /** Whether the books agree with DSM, now, and every finding so far. */
+    def reconcile() {
+        attempt { reconcileJson(dsmReconcileService.measure()) }
+    }
+
+    def checkNow() {
+        attempt { reconcileJson(dsmReconcileService.runChecks()) }
+    }
+
+    /** Only the owner's wallet moves the books to match DSM. */
+    def correctBooks() {
+        attempt {
+            if (!walletOfSession()?.owner) {
+                throw new DsmCustodyException("only the owner corrects the books: sign in with the owner's wallet")
+            }
+            DsmReconcileEvent event = dsmReconcileService.correctBooks(params.accountId, params.productId, params.reason,
+                    User.get(session.user.id))
+            [transactionNumber: event.transactionNumber, signed: event.signedAddress != null]
+        }
+    }
+
+    private Map reconcileJson(List<Map> rows) {
+        return [
+                rows  : rows.collect { Map r ->
+                    [accountId: r.account.id, location: r.account.location.name, productId: r.product.id, productCode: r.product.productCode,
+                     dsmHolding: r.dsmHolding, undrawn: r.undrawn, inTransit: r.inTransit, books: r.books, cached: r.cached, gap: r.gap,
+                     value: (r.product.pricePerUnit ?: BigDecimal.ZERO) * (r.gap as long)]
+                },
+                events: DsmReconcileEvent.list(sort: "dateCreated", order: "desc", max: 30).collect { DsmReconcileEvent e ->
+                    [kind: e.kind, location: e.account.location.name, productCode: e.product.productCode, gap: e.gap, books: e.books,
+                     dsmHolding: e.dsmHolding, note: e.note, by: e.recordedBy?.name ?: "reconciler", transactionNumber: e.transactionNumber,
+                     signedAddress: e.signedAddress, at: e.dateCreated]
+                },
+        ]
     }
 
     private List<Map> custody() {
