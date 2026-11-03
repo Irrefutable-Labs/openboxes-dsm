@@ -410,8 +410,19 @@ reads a vault's terms.
   - `6e2c368ba` restarted the reserve lineage and its message calls for a beta node wipe, which did not happen. The two
     lineages coexist: `main` is past generation 217 and the branch stands at generation 1.
   - `main` has the same flaw with more margin: about 8 copies at one of its reserve cells would stop it too.
-  - Not yet shown: that a paging node clears this. Nothing has been changed on the fleet.
+  - Resolved 2026-11-03 on the owner's instruction: every member was wiped and rebuilt at `e78fd9208`, with paged reads
+    (`chore/fleet-reprovision-2026-11-03`, `dsm_storage_node/deploy/reprovision_gcp.sh`). Both organizations' accounts
+    and the phone's wallet then claimed on their first try, with no oversized answers and no read-back failures. What
+    caused the first retry is still unknown, and a retry still adds a copy; paging keeps those copies readable.
   A host must also match the wallets connecting to it (`connect.app.accept` compares signed bytes).
+
+- **Measured on the live fleet, 2026-11-03, with a real wallet on `RFGYB0PQ8XK`:** the wallet connected and became the
+  owner; signing in by approving on the phone worked with no password; a 25-unit level token was created in the wallet's own
+  wizard; 3 seats were released by approving on the phone; a seat was locked in a real vault; the owner's wallet found it,
+  showed "revoke: you decide", and decided it; the verdict went final; the account released the vault with no part played
+  by the holder's device. The count ended at cap 25, assigned 0, spare 3. The holder in that run was the hospital's account,
+  a real DSM identity, because the second phone could not be reached. Reassignment, and a person with a wallet being
+  refused sign-in after revocation, are not yet exercised.
 
 The presentation follows Wildstate's overlay: one timeline marking what is WEB2 and what is DSM, over a realistic scenario
 with sample USD values, and running on the beta storage fleet rather than a local one.
