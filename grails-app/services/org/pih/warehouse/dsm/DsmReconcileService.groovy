@@ -75,8 +75,14 @@ class DsmReconcileService {
         return rows
     }
 
-    /** Runs each check, and records what changed. */
+    /** Runs each check, and records what changed. One run at a time: a click and the schedule may coincide. */
     List<Map> runChecks() {
+        synchronized (LAST_GAP) {
+            return checkAll()
+        }
+    }
+
+    private List<Map> checkAll() {
         List<Map> rows = measure()
         rows.each { Map row ->
             String key = "${row.account.id}|${row.product.id}".toString()
