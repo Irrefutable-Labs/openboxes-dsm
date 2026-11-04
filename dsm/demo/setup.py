@@ -21,6 +21,10 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 D = os.path.abspath(os.path.join(ROOT, ".."))
 NORTHGATE, LAKESIDE = "192.168.4.39", "192.168.4.40"
 SEAT_TICKER = "NGSEAT"
+CUSTODY_TICKER = "NGCUST"
+CUSTODY_UNITS = 1000
+# NGCUST: Northgate's custody token, made once in Marcus's wallet; one unit is one unit of goods in someone's hands.
+CUSTODY = "9H16Q9S3XG2G3Z659QMGEZ5QJNWS0SJJ94DQXZMAP6N8F969SVYG"
 AMX, ORS, SEATS = ("C4P4XGDK0SM8KYHN9EYB6BQ5MTZ29NQAB2P7AFHWKV09P8B0JMR0", "0PYXZVSMZ8Z27XXXSH0S9RNC20PJA5H2QQH4GVR4AXJ4RHDRBS5G",
                    "W0KWAVP5S6PXHMP6D134A2RFWETGR075348X5XFAX76WE8N4CGXG")
 ENV = dict(os.environ, DSM_CHECKOUT=D + "/wt-fleet-reprovision", DSM_BIN=D + "/dsm-phone-host-target/release",
@@ -104,6 +108,28 @@ class Phone:
             if '"DISCONNECT"' not in self.screen():
                 return
             self.press("DISCONNECT", 10)
+
+    def adopt(self, anchor, ticker):
+        """Add a token to this wallet by its anchor (Tokens, Add Token), so the wallet can be paid it."""
+        self.front()
+        for _ in range(4):
+            if self.cdp("document.querySelectorAll('.dsm-menu-item').length").strip() not in ("", "0"):
+                break
+            self.cdp("(function(){var b=document.querySelector('.button-b');if(b)b.click();return 1})()")
+            time.sleep(2)
+        self.cdp("(function(){var e=[].slice.call(document.querySelectorAll('.dsm-menu-item')).filter(function(x){return (x.textContent||'').trim()==='TOKENS'})[0];if(e)e.click();return 1})()")
+        time.sleep(4)
+        if ticker in self.screen():
+            return
+        self.press("+ Add Token (CPTA)", 3)
+        sh("python3", HERE + "/wallet_fill.py", self.ip, "add-token-anchor", anchor, timeout=60)
+        time.sleep(1)
+        self.press("Add", 6)
+        for _ in range(15):
+            if ticker in self.screen():
+                return
+            time.sleep(3)
+        raise SystemExit("the wallet never showed " + ticker + " after adopting it")
 
     def show(self, words):
         """Open the Waiting tab until the request naming these words is on screen, and leave it there to be read."""
@@ -283,6 +309,22 @@ def main():
     say("Priya's wallet connects to Northgate")
     north.wallet("person", priya)
 
+    say("custody: Northgate's custody token, %d units for its account, Lakeside roots it, and Priya's wallet adopts it" % CUSTODY_UNITS)
+    custody = north.call("/dsmWallet/addCustodyToken", form={"policyAnchor": CUSTODY, "creatorId": me})
+    if custody["ticker"] != CUSTODY_TICKER:
+        raise SystemExit("the custody token's anchor names %s, not %s" % (custody["ticker"], CUSTODY_TICKER))
+    north.call("/dsmWallet/requestCustodyUnits", form={"quantity": str(CUSTODY_UNITS)})
+    marcus.approve("Pay %d %s" % (CUSTODY_UNITS, CUSTODY_TICKER))
+    for _ in range(40):
+        if int(north.call("/dsmWallet/state")["custody"]["own"]["spare"]) >= CUSTODY_UNITS:
+            break
+        time.sleep(4)
+    else:
+        raise SystemExit("the custody units never reached the account: spare is %s" % north.call("/dsmWallet/state")["custody"]["own"]["spare"])
+    connection = lake.call("/dsmWallet/state")["custody"]["connections"][0]["id"]
+    lake.call("/dsmWallet/addCustodyToken", form={"policyAnchor": CUSTODY, "connectionId": connection})
+    priya.adopt(CUSTODY, CUSTODY_TICKER)
+
     say("opening stock, so the warehouse is not empty: 200 packs of oral rehydration salts")
     ors = north.product("ORS020")
     north.call("/api/dsm/admissions", form={"accountId": north_account, "productId": ors, "quantity": "200", "reference": "GRN-77102"})
@@ -309,6 +351,8 @@ def main():
     check = [("Northgate owner", [w["label"] for w in state["wallets"] if w["owner"]] == ["Marcus Hale"]),
              ("Priya's wallet connected", any(w["deviceId"] == "P58TPCQX" for w in state["wallets"])),
              ("5 spare seats", int(state["levels"][0]["spare"]) >= 5),
+             ("%d custody units" % CUSTODY_UNITS, int(state["custody"]["own"]["spare"]) >= CUSTODY_UNITS),
+             ("Lakeside takes Northgate's hand-overs", len(lake.call("/dsmWallet/state")["custody"]["partners"]) == 1),
              ("no seat yet", not state["seats"]),
              ("200 ORS on the books", any(c["code"] == "ORS020" and c["onHand"] == 200 and c["dsmUnits"] == 200
                                          for c in north.call("/dsmWallet/timeline?after=0&web2After=0")["custody"]))]

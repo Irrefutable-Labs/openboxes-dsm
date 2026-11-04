@@ -63,13 +63,15 @@ CHECKS = {
                 need(one("a", "select quantity_drawn from dsm_admission where reference='GRN-77114'") == "500", "500 boxes recorded")],
     5: lambda: need(one("a", "select count(*) from dsm_authority_record where kind='SIGN_IN' and wallet like 'P58T%'") >= "1", "Priya signed in"),
     6: lambda: need(one("a", "select quantity from dsm_custody_transfer where kind='SHIPMENT'") == "120", "120 boxes moved on DSM"),
-    7: lambda: need(one("b", "select count(*) from shipment") == "1", "Lakeside made its shipment record"),
-    8: lambda: need(one("b", "select quantity_received from dsm_custody_transfer where kind='INBOUND'") == "120", "Lakeside received 120"),
-    9: lambda: print("  ok: the verdict is final on the storage nodes; the seat row comes back when Marcus next opens the DSM page"),
-    10: lambda: [need(one("a", "select status from dsm_seat where number=1") == "RETURNED", "seat #1 returned"),
+    7: lambda: need(one("a", "select units from dsm_carriage where kind='DISPATCHED'") == "120", "120 custody units in Priya's wallet"),
+    8: lambda: [need(one("b", "select units from dsm_carriage where kind='HANDED_OVER'") == "120", "120 custody units handed over at Lakeside"),
+                need(one("b", "select count(*) from shipment") == "1", "Lakeside made its shipment record")],
+    9: lambda: need(one("b", "select quantity_received from dsm_custody_transfer where kind='INBOUND'") == "120", "Lakeside received 120"),
+    10: lambda: print("  ok: the verdict is final on the storage nodes; the seat row comes back when Marcus next opens the DSM page"),
+    11: lambda: [need(one("a", "select status from dsm_seat where number=1") == "RETURNED", "seat #1 returned"),
                  need(one("a", "select proven_amount from dsm_custody_transfer where kind='SHIPMENT'") == "120", "Lakeside's holding proven: 120")],
-    11: lambda: need(one("a", "select count(*) from dsm_reconcile_event where kind='GAP' and gap=40") == "1", "the 40-box gap found and signed"),
-    12: lambda: need(one("a", "select count(*) from dsm_reconcile_event where kind='CORRECTED'") == "1", "corrected by a new entry"),
+    12: lambda: need(one("a", "select count(*) from dsm_reconcile_event where kind='GAP' and gap=40") == "1", "the 40-box gap found and signed"),
+    13: lambda: need(one("a", "select count(*) from dsm_reconcile_event where kind='CORRECTED'") == "1", "corrected by a new entry"),
 }
 
 
@@ -92,22 +94,32 @@ def do(n):
         priya.approve("as priya.nair")
         wait(60, lambda: one("a", "select count(*) from dsm_authority_record where kind='SIGN_IN' and wallet like 'P58T%'") >= "1", "Priya signed in")
     elif n == 7:
-        priya.show("Sign in to Lakeside")
-        time.sleep(6)
-        priya.approve("Sign in to Lakeside")
-        wait(60, lambda: one("b", "select count(*) from dsm_authority_record where kind='SIGN_IN'") >= "1", "Priya signed in at Lakeside")
-    elif n == 9:
+        # The browser pressed "Hand to carrier"; her phone shows what it now holds.
+        wait(60, lambda: one("a", "select count(*) from dsm_carriage where kind='DISPATCHED'") == "1", "handed to Priya")
+        priya.apps()
+    elif n == 8:
+        if one("b", "select count(*) from dsm_authority_record where kind='SIGN_IN'") == "0":
+            priya.show("Sign in to Lakeside")
+            time.sleep(6)
+            priya.approve("Sign in to Lakeside")
+            wait(60, lambda: one("b", "select count(*) from dsm_authority_record where kind='SIGN_IN'") >= "1", "Priya signed in at Lakeside")
+        else:
+            # The browser asked her wallet to hand over; she approves the payment on her phone.
+            priya.show("Pay 120")
+            time.sleep(6)
+            priya.approve("Pay 120")
+    elif n == 10:
         cell = one("a", "select verdict_cell from dsm_seat where number=1")
         marcus.front()
         out = subprocess.run(["bash", HERE + "/wallet_revoke.sh", setup.NORTHGATE, cell], capture_output=True, text=True, timeout=280).stdout
         need("Final: revoke" in out, "revoked on Marcus's phone")
-    elif n == 10:
+    elif n == 11:
         for _ in range(6):
             subprocess.run([sys.executable, "-I", HERE + "/partner_answers.py"], capture_output=True, text=True, timeout=280)
             if one("a", "select proven_amount from dsm_custody_transfer where kind='SHIPMENT'") == "120":
                 break
             time.sleep(5)
-    elif n == 11:
+    elif n == 12:
         print(subprocess.run(["bash", HERE + "/tamper.sh"], capture_output=True, text=True, timeout=60).stdout.strip())
     CHECKS.get(n, lambda: None)()
 
