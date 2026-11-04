@@ -95,7 +95,8 @@ class DsmWalletController {
                 }
                 return [answered: step.owner == true, waiting: step.asked != null, deviceId: (step.device as String)?.take(8)]
             }
-            DsmWallet wallet = dsmWalletService.walletAnswering(digest)
+            // a person who will never hold a seat here, a carrier for instance, is named when their wallet connects
+            DsmWallet wallet = dsmWalletService.walletAnswering(digest, params.name)
             if (wallet && params.purpose == "registry") {
                 dsmAccountService.confirmConnection(dsmWalletService.homeAccount(), digest, null, true)
             }

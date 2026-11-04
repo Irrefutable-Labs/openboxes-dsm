@@ -60,16 +60,30 @@ def open_url(serial, url):
     # Chrome may be cold or behind the wallet: the tab is waited for, not assumed.
     for _ in range(12):
         time.sleep(2)
-        if any(SITE in page.get("url", "") for page in tabs(serial)):
+        if activate(serial):
             time.sleep(3)
             return
     front(serial)
     time.sleep(4)
 
 
+def activate(serial, part=SITE):
+    """Bring the OpenBoxes tab to the front of Chrome, so no other tab of the phone's owner shows on the way."""
+    for page in tabs(serial):
+        if part in page.get("url", ""):
+            try:
+                urllib.request.urlopen("http://127.0.0.1:%d/json/activate/%s" % (PORT, page["id"]), timeout=10).read()
+            except OSError:
+                pass
+            return True
+    return False
+
+
 def front(serial):
     wcdp.adb(serial, "shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main")
-    time.sleep(2)
+    time.sleep(1)
+    activate(serial)
+    time.sleep(1)
 
 
 class Chrome(wcdp.Page):

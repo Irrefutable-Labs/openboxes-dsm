@@ -12,7 +12,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = 8799
-PHONES = {"northgate": "192.168.4.39", "lakeside": "192.168.4.40"}
+# Which phone each name is: Marcus (Northgate's owner, and the registry), Priya (Northgate's manager), the carrier, Amara (Lakeside).
+PHONES = {"northgate": "RFGYB0PQ8XK", "priya": "RFGYB0PQ9FF", "carrier": "R5CW620MQVL", "lakeside": "RF8Y90PX5GN"}
 
 # title, what the ordinary system does, what DSM does, which phone to show
 SCENES = [
@@ -30,17 +31,17 @@ SCENES = [
      "Nothing counts until the product registry approves it on its own phone, and units enter custody.", "northgate"),
     ("Priya signs in. Her access comes from her seat, not from a database role",
      "OpenBoxes shows her manager's screens.",
-     "Her wallet signs in, and her vault is read from the storage nodes on every single click.", "lakeside"),
+     "Her wallet signs in, and her vault is read from the storage nodes on every single click.", "priya"),
     ("Priya ships 120 boxes to Lakeside from her phone: $2,208",
      "OpenBoxes creates the shipment and its paperwork from the stock on hand.",
-     "Custody moves on DSM before the books change. If DSM refuses, nothing is recorded.", "lakeside"),
-    ("Priya takes the boxes with her. On her phone, Northgate hands them to her",
+     "Custody moves on DSM before the books change. If DSM refuses, nothing is recorded.", "priya"),
+    ("Priya hands the boxes to the driver, Dev Okafor of Meridian Freight",
      "OpenBoxes has no idea who is carrying what; a paper manifest at best.",
-     "Northgate's account pays 120 custody units to her wallet. She holds the goods now, and nothing else of value.", "lakeside"),
-    ("At Lakeside's door, Priya hands custody over from her phone, and takes the boxes in",
+     "Northgate's account pays 120 custody units to the driver's wallet. He holds the goods now, and nothing else of value.", "priya"),
+    ("At Lakeside's door, Amara asks the driver's wallet to hand over; he approves on his phone; she takes the boxes in",
      "Lakeside's own OpenBoxes knows nothing yet: its books still say zero, and nothing can be taken in.",
-     "Lakeside's door screen shows 0 of 120 handed over. Her wallet pays the units to Lakeside's account; only then can the boxes be taken in.", "lakeside"),
-    ("Lakeside counts 130, then 120, on the phone",
+     "Lakeside's door screen shows 0 of 120 handed over. His wallet pays the units to Lakeside's account; only then can the boxes be taken in.", "lakeside"),
+    ("Amara counts 130, then 120, on her phone",
      "OpenBoxes would normally accept whatever someone types.",
      "DSM moved 120, so 130 is refused on the spot. Receiving 120 brings the books into line.", "lakeside"),
     ("Marcus revokes Priya's seat from his phone",
@@ -63,15 +64,15 @@ SCENES = [
 # Scenes that happen on the phone: its screen is shown large, the page behind it dimmed.
 ON_THE_PHONE = {6, 7, 8, 9}
 
-state = {"scene": 0, "focus": []}
+state = {"scene": 0, "focus": [], "phone": None}
 images = {}
 
 
 def capture(name, part):
     while True:
         try:
-            serial = next((line.split()[0] for line in subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=10).stdout.splitlines()
-                           if line.startswith(part) and line.split()[-1] == "device"), None)
+            serial = next((line.rsplit("\t", 1)[0] for line in subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=10).stdout.splitlines()[1:]
+                           if "\t" in line and part in line.rsplit("\t", 1)[0] and line.rsplit("\t", 1)[1].strip() == "device"), None)
             if serial:
                 png = subprocess.run(["adb", "-s", serial, "exec-out", "screencap", "-p"], capture_output=True, timeout=15).stdout
                 if png.startswith(b"\x89PNG"):
@@ -97,7 +98,8 @@ class Handler(BaseHTTPRequestHandler):
     def scene(self):
         n = state["scene"]
         title, web2, dsm, phone = SCENES[n]
-        self.answer(json.dumps({"n": n + 1, "of": len(SCENES), "title": title, "web2": web2, "dsm": dsm, "phone": phone, "stage": "phone" if n + 1 in ON_THE_PHONE else "page", "focus": state["focus"]}).encode(), "application/json")
+        self.answer(json.dumps({"n": n + 1, "of": len(SCENES), "title": title, "web2": web2, "dsm": dsm, "phone": state["phone"] or phone,
+                                "stage": "phone" if n + 1 in ON_THE_PHONE else "page", "focus": state["focus"]}).encode(), "application/json")
 
     def do_GET(self):
         if self.path.startswith("/phone/"):
@@ -112,15 +114,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length).decode() if length else ""
-        if self.path == "/focus":
+        if self.path == "/phone":
+            # Which phone to show for the rest of this scene, when the scene's own is not the one acting: a name from PHONES, or nothing.
+            state["phone"] = body if body in PHONES else None
+        elif self.path == "/focus":
             # What to spotlight now, separated by |: a CSS selector, or card:<selector>, text:<words> or row:<words>.
             state["focus"] = [item for item in body.split("|") if item]
         elif self.path == "/next":
-            state["scene"], state["focus"] = min(state["scene"] + 1, len(SCENES) - 1), []
+            state["scene"], state["focus"], state["phone"] = min(state["scene"] + 1, len(SCENES) - 1), [], None
         elif self.path == "/prev":
-            state["scene"], state["focus"] = max(state["scene"] - 1, 0), []
+            state["scene"], state["focus"], state["phone"] = max(state["scene"] - 1, 0), [], None
         elif self.path.startswith("/scene/"):
-            state["scene"], state["focus"] = max(0, min(int(self.path.split("/")[-1]) - 1, len(SCENES) - 1)), []
+            state["scene"], state["focus"], state["phone"] = max(0, min(int(self.path.split("/")[-1]) - 1, len(SCENES) - 1)), [], None
         self.scene()
 
 

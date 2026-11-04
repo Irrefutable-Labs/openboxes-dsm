@@ -1,9 +1,10 @@
 # Recording the demo
 
-About 9 minutes, 14 scenes, on the live storage fleet with the two real wallets. Claude drives the browser and both phones while
+About 9 minutes, 14 scenes, on the live storage fleet with four real wallets. Claude drives the browser and the phones while
 you record. The story bar, the live phone and the WEB2/DSM panel explain each step on screen.
 
-1. Keep both phones plugged in or awake, with Wireless debugging on: `RFGYB0PQ8XK` is Marcus, `RFGYB0PQ9FF` is Priya.
+1. Keep the four phones plugged in or awake, with Wireless debugging on: `RFGYB0PQ8XK` is Marcus, `RFGYB0PQ9FF` is Priya,
+   `R5CW620MQVL` is the driver, `RF8Y90PX5GN` is Amara.
 2. Make the Browser pane as large as it goes, and start your screen recording on it.
 3. Say "go".
 
@@ -21,15 +22,16 @@ done in the browser. Nothing is left to chance: a beat whose check fails stops t
 
 ## What is staged
 
-- The companies, people and prices are made up.
-- Marcus's wallet also stands in as the product registry, because there are two phones.
-- Priya owns Lakeside and also holds a seat at Northgate, for the same reason. She also drives the shipment over herself,
-  so her wallet is the carrier's wallet: Northgate's custody token `NGCUST` is made in Marcus's wallet, and her wallet
-  adopted it before the recording.
+- The companies, people and prices are made up. Four phones, four people:
+  - Marcus Hale owns Northgate. His wallet also stands in as the product registry.
+  - Priya Nair is Northgate's warehouse manager: a seat, Send from stock, and the hand-over to the driver at the door.
+  - Dev Okafor drives for Meridian Freight: a wallet and nothing else, never signed in anywhere. It is connected to both
+    organizations and adopted Northgate's custody token `NGCUST` (made in Marcus's wallet) before the recording.
+  - Amara Osei owns Lakeside and works its door: she asks the driver's wallet to hand over, takes in, counts and receives.
 - The shipment is prepared off camera up to its send step. The send, and everything DSM does, happens on camera.
-- Scenes 6 to 9 happen on Priya's phone: the door screen (`/dsmPhone`) in Chrome, shown large on the recording. She signs
-  in at each organization with the wallet on the same phone. The phone keeps one session per host whatever the port, so
-  the demo's two organizations on one address are used one tab at a time; `play.py do 7|8|9` drives it all.
+- Scenes 6 to 9 happen on the phones: the door screen (`/dsmPhone`) in Chrome, shown large on the recording, each person
+  signed in with the wallet on the same phone. Scene 7 ends on the driver's wallet, scene 8 cuts to it while he approves.
+  `play.py do 6|7|8|9` drives it all, phone switches included.
 - The 40 boxes are added by a real database edit from a terminal (`tamper.sh`), which the viewer does not see being typed.
 - Lakeside's account answers the custody proof by a script standing in for its own schedule.
 
@@ -43,9 +45,9 @@ done in the browser. Nothing is left to chance: a beat whose check fails stops t
 | 4 | 500 boxes admitted on the registry's phone, recorded: $9,200 | DSM page, stock page |
 | 5 | Priya signs in on her phone | Northgate, Priya's phone |
 | 6 | Priya ships 120 boxes from her phone, from the stock on hand: $2,208 | Priya's phone, Send |
-| 7 | Priya takes the boxes: on her phone, Northgate hands them to her, 120 custody units in her wallet | Priya's phone, Send and Carry |
-| 8 | Lakeside's door shows 0 of 120 handed over; she hands over from her phone, approves in her wallet, takes in | Priya's phone, Door |
-| 9 | Counting 130 is refused on the phone, 120 is received | Priya's phone, Receive |
+| 7 | Priya hands the boxes to the driver: 120 custody units land in his wallet | Priya's phone, Send; the driver's wallet |
+| 8 | Lakeside's door shows 0 of 120 handed over; Amara asks the driver's wallet, he approves, she takes in | Amara's phone, Door; the driver's wallet |
+| 9 | Counting 130 is refused on the phone, 120 is received | Amara's phone, Receive |
 | 10 | Marcus revokes the seat, and Priya's next click is refused | Marcus's phone, Northgate |
 | 11 | Northgate verifies what Lakeside holds | DSM page |
 | 12 | Database edit: 40 boxes, $736, caught and signed | DSM page |

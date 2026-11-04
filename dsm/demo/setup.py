@@ -2,8 +2,10 @@
 """A clean demo, ready to record, on the live storage fleet and the two real wallets. Run it again to start over; each earlier
 run is moved aside, never deleted.
 
-Marcus Hale owns Northgate (RFGYB0PQ8XK, which also stands in as the product registry). Priya Nair owns Lakeside (RFGYB0PQ9FF)
-and is connected to Northgate as a person. Nothing is left to do but the story.
+Four phones. Marcus Hale owns Northgate (RFGYB0PQ8XK, which also stands in as the product registry). Priya Nair is
+Northgate's warehouse manager (RFGYB0PQ9FF), connected to Northgate as a person. Dev Okafor drives for Meridian Freight
+(R5CW620MQVL): a wallet only, connected to both organizations, never signed in anywhere. Amara Osei owns Lakeside
+(RF8Y90PX5GN). Nothing is left to do but the story.
 """
 import http.cookiejar
 import json
@@ -19,7 +21,9 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 D = os.path.abspath(os.path.join(ROOT, ".."))
-NORTHGATE, LAKESIDE = "192.168.4.39", "192.168.4.40"
+# The phones by hardware serial: adb lists them by mDNS name (or IP when connected by address), and both hold the serial.
+NORTHGATE, PRIYA, CARRIER, LAKESIDE = "RFGYB0PQ8XK", "RFGYB0PQ9FF", "R5CW620MQVL", "RF8Y90PX5GN"
+CARRIER_NAME = "Dev Okafor, Meridian Freight"
 SEAT_TICKER = "NGSEAT"
 CUSTODY_TICKER = "NGCUST"
 CUSTODY_UNITS = 1000
@@ -49,7 +53,9 @@ class Phone:
 
     @property
     def serial(self):
-        return next(l.split()[0] for l in sh("adb", "devices").splitlines() if l.startswith(self.ip))
+        # a serial may hold spaces (an mDNS name): the line is "serial<TAB>device"
+        return next(l.rsplit("\t", 1)[0] for l in sh("adb", "devices").splitlines()[1:]
+                    if "\t" in l and self.ip in l.rsplit("\t", 1)[0] and l.rsplit("\t", 1)[1].strip() == "device")
 
     def adb(self, *args):
         return sh("adb", "-s", self.serial, *args)
@@ -208,10 +214,12 @@ class Org:
     def product(self, code):
         return next(p["id"] for p in self.call("/api/generic/product/?max=100") if p.get("productCode") == code)
 
-    def wallet(self, purpose, phone):
+    def wallet(self, purpose, phone, name=None):
         offer = self.call("/dsmWallet/offer", form={})
         phone.connect(offer["code"])
         form = {"offerDigest": offer["offerDigest"], "purpose": purpose}
+        if name:
+            form["name"] = name
         asked = False
         for _ in range(60):
             step = self.call("/dsmWallet/answered", form=form)
@@ -226,7 +234,7 @@ class Org:
 
 def fresh():
     say("connected wallets leave the old run")
-    for ip in (NORTHGATE, LAKESIDE):
+    for ip in (NORTHGATE, PRIYA, CARRIER, LAKESIDE):
         Phone(ip).disconnect_all()
     say("rebuilding")
     built = subprocess.run(["./gradlew", "--no-daemon", "--console=plain", "war", "bootRepackage", "-x", "npm_run_bundle", "-x", "npmInstall"],
@@ -266,13 +274,13 @@ def fresh():
 def main():
     fresh()
     north, lake = Org(8081), Org(8082)
-    marcus, priya = Phone(NORTHGATE), Phone(LAKESIDE)
+    marcus, priya, carrier, amara = Phone(NORTHGATE), Phone(PRIYA), Phone(CARRIER), Phone(LAKESIDE)
     for org, first, last, username, email in (("a", "Marcus", "Hale", "marcus.hale", "marcus.hale@northgate.example"),
-                                              ("b", "Priya", "Nair", "priya.nair", "priya.nair@lakeside.example")):
+                                              ("b", "Amara", "Osei", "amara.osei", "amara.osei@lakeside.example")):
         sql(org, "update person p join user u on u.id=p.id set p.first_name='%s', p.last_name='%s', p.email='%s' where u.username='admin'; "
                  "update user set username='%s' where username='admin'" % (first, last, email, username))
     north.login("marcus.hale")
-    lake.login("priya.nair")
+    lake.login("amara.osei")
 
     say("products on DSM, and the two organizations connect, while each still has its setup login")
     north_account, lake_account = north.account(), lake.account()
@@ -285,9 +293,9 @@ def main():
     say("Marcus claims Northgate on his phone")
     digest, _ = north.wallet("owner", marcus)
     north.call("/dsmWallet/answered", form={"offerDigest": digest, "purpose": "registry"})
-    say("Priya claims Lakeside on her phone")
-    lake.wallet("owner", priya)
-    for org, who in ((north, "Marcus Hale"), (lake, "Priya Nair")):
+    say("Amara claims Lakeside on her phone")
+    lake.wallet("owner", amara)
+    for org, who in ((north, "Marcus Hale"), (lake, "Amara Osei")):
         owners = [w["label"] for w in org.call("/dsmWallet/state")["wallets"] if w["owner"]]
         if owners != [who]:
             raise SystemExit("the owner claim did not land: %s owns %s" % (owners, who))
@@ -308,8 +316,11 @@ def main():
 
     say("Priya's wallet connects to Northgate")
     north.wallet("person", priya)
+    say("the driver's wallet connects to Northgate and to Lakeside, named, never signed in")
+    north.wallet("person", carrier, CARRIER_NAME)
+    lake.wallet("person", carrier, CARRIER_NAME)
 
-    say("custody: Northgate's custody token, %d units for its account, Lakeside roots it, and Priya's wallet adopts it" % CUSTODY_UNITS)
+    say("custody: Northgate's custody token, %d units for its account, Lakeside roots it, and the driver's wallet adopts it" % CUSTODY_UNITS)
     custody = north.call("/dsmWallet/addCustodyToken", form={"policyAnchor": CUSTODY, "creatorId": me})
     if custody["ticker"] != CUSTODY_TICKER:
         raise SystemExit("the custody token's anchor names %s, not %s" % (custody["ticker"], CUSTODY_TICKER))
@@ -323,7 +334,7 @@ def main():
         raise SystemExit("the custody units never reached the account: spare is %s" % north.call("/dsmWallet/state")["custody"]["own"]["spare"])
     connection = lake.call("/dsmWallet/state")["custody"]["connections"][0]["id"]
     lake.call("/dsmWallet/addCustodyToken", form={"policyAnchor": CUSTODY, "connectionId": connection})
-    priya.adopt(CUSTODY, CUSTODY_TICKER)
+    carrier.adopt(CUSTODY, CUSTODY_TICKER)
 
     say("opening stock, so the warehouse is not empty: 200 packs of oral rehydration salts")
     ors = north.product("ORS020")
@@ -350,6 +361,9 @@ def main():
     state = north.call("/dsmWallet/state")
     check = [("Northgate owner", [w["label"] for w in state["wallets"] if w["owner"]] == ["Marcus Hale"]),
              ("Priya's wallet connected", any(w["deviceId"] == "P58TPCQX" for w in state["wallets"])),
+             ("the driver's wallet connected at Northgate", any(w["label"] == CARRIER_NAME for w in state["wallets"])),
+             ("the driver's wallet connected at Lakeside", any(w["label"] == CARRIER_NAME for w in lake.call("/dsmWallet/state")["wallets"])),
+             ("Amara owns Lakeside", [w["label"] for w in lake.call("/dsmWallet/state")["wallets"] if w["owner"]] == ["Amara Osei"]),
              ("5 spare seats", int(state["levels"][0]["spare"]) >= 5),
              ("%d custody units" % CUSTODY_UNITS, int(state["custody"]["own"]["spare"]) >= CUSTODY_UNITS),
              ("Lakeside takes Northgate's hand-overs", len(lake.call("/dsmWallet/state")["custody"]["partners"]) == 1),

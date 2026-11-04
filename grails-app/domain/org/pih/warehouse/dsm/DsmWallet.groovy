@@ -26,6 +26,9 @@ class DsmWallet {
     /** Whoever this wallet is, once an authority has given it a seat. */
     User user
 
+    /** Who this wallet belongs to when no OpenBoxes user does: a carrier, say, named when their wallet connected. */
+    String name
+
     Date dateCreated
     Date lastUpdated
 
@@ -41,9 +44,10 @@ class DsmWallet {
         sessionId(blank: false, size: Base32Crockford.ID32_LENGTH..Base32Crockford.ID32_LENGTH)
         offerDigest(blank: false, size: Base32Crockford.ID32_LENGTH..Base32Crockford.ID32_LENGTH)
         user(nullable: true)
+        name(nullable: true, maxSize: 120)
     }
 
     String getLabel() {
-        return user ? user.name : "Unassigned wallet ${deviceId?.take(8)}"
+        return user ? user.name : (name ?: "Unassigned wallet ${deviceId?.take(8)}")
     }
 }

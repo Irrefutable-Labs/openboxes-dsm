@@ -19,6 +19,9 @@
     body.dsm-wide-phone #dsm-story .tag { font-size: 15px; }
     body.dsm-wide-phone #dsm-story > div > div { margin-bottom: 14px; }
     #dsm-story .web2 { background: #2f6fc4; } #dsm-story .dsm { background: #b7791f; }
+    /* The WEB2/DSM panel slides almost out of the way while the spotlight is on something it would cover. */
+    #dsm-ov.open { transition: transform .35s ease; }
+    body.dsm-ov-yield #dsm-ov.open { transform: translateX(calc(100% - 26px)); }
     #dsm-phone { position: fixed; left: 14px; bottom: 104px; box-sizing: border-box; pointer-events: none; z-index: 100002; display: none; background: #10141c; border: 3px solid #b7791f; border-radius: 16px; padding: 6px; color: #eef1f6; font: 12px -apple-system, "Segoe UI", sans-serif; text-align: center; }
     #dsm-phone .crop { aspect-ratio: 330 / 470; overflow: hidden; border-radius: 10px; background: #000; }
     #dsm-phone div { font-size: 15px; }
@@ -46,7 +49,7 @@
 <script>
     (function () {
         var server = 'http://127.0.0.1:8799';
-        var names = { northgate: "Marcus's phone, Northgate", lakeside: "Priya's phone" };
+        var names = { northgate: "Marcus's phone, Northgate", priya: "Priya's phone, Northgate", carrier: "The driver's phone, Meridian Freight", lakeside: "Amara's phone, Lakeside" };
         var bar = document.getElementById('dsm-story'), box = document.getElementById('dsm-phone'), img = document.getElementById('dsm-phone-img');
         var phone = null;
         function set(id, v) { document.getElementById(id).textContent = v; }
@@ -98,7 +101,15 @@
                     if (r.top < 60 || r.bottom > barTop - 10) window.scrollBy(0, r.height <= band ? (r.top + r.height / 2) - (60 + band / 2) : r.top - 70);
                 }
             }
-            if (!boxes.length) { shade.style.display = 'none'; rings.innerHTML = ''; return; }
+            if (!boxes.length) { shade.style.display = 'none'; rings.innerHTML = ''; document.body.classList.remove('dsm-ov-yield'); return; }
+            // The side panel gives way when a spotlit element lies under it.
+            var panel = document.getElementById('dsm-ov'), covered = false;
+            if (panel && panel.className === 'open') {
+                var pw = panel.offsetWidth, pl = window.innerWidth - pw, pb = panel.getBoundingClientRect().bottom;
+                if (document.body.classList.contains('dsm-ov-yield')) pb = panel.getBoundingClientRect().bottom;
+                covered = boxes.some(function (e) { if (e.closest('#dsm-ov')) return false; var r = e.getBoundingClientRect(); return r.right > pl + 4 && r.top < pb; });
+            }
+            document.body.classList.toggle('dsm-ov-yield', covered);
             var W = window.innerWidth, H = window.innerHeight, d = 'M0 0H' + W + 'V' + H + 'H0Z', pad = 7, html = '';
             boxes.forEach(function (e) {
                 var r = e.getBoundingClientRect();

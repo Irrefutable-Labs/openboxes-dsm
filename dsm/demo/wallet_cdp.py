@@ -22,9 +22,12 @@ def adb(serial, *args):
 
 
 def serial_of(part):
+    """The connected phone whose serial contains `part`: an IP, a hardware serial or an mDNS name (which may hold spaces)."""
     for line in subprocess.run(["adb", "devices"], capture_output=True, text=True).stdout.splitlines()[1:]:
-        if part in line and line.split()[-1] == "device":
-            return line.split()[0]
+        if "\t" in line:
+            serial, state = line.rsplit("\t", 1)
+            if part in serial and state.strip() == "device":
+                return serial
     raise SystemExit("no connected phone matches " + part)
 
 

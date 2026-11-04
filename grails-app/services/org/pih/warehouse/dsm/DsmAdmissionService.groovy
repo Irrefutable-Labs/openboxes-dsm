@@ -79,7 +79,9 @@ class DsmAdmissionService {
                 requestedBy: requestedBy,
         )
         admission.save(failOnError: true, flush: true)
-        admission.memo = "${MEMO_ADMISSION}${admission.id} ${admission.reference}".toString()
+        // Shown on the registry's phone as the thing to approve: the reference people know, then a short handle of this
+        // row, so no unbroken run of characters is wider than a phone's card. The memo is matched whole, never parsed.
+        admission.memo = "${MEMO_ADMISSION}${admission.reference} ${admission.id[-8..-1]}".toString()
         if (admission.memo.length() > MAX_PAYMENT_MEMO) {
             throw new DsmCustodyException(
                     "the reference ${admission.reference} is too long: DSM carries ${MAX_PAYMENT_MEMO} characters of an " +

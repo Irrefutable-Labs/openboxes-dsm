@@ -23,7 +23,7 @@ spec = importlib.util.spec_from_file_location("setup", HERE + "/setup.py")
 setup = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(setup)
 Phone, sql, say = setup.Phone, setup.sql, setup.say
-marcus, priya = Phone(setup.NORTHGATE), Phone(setup.LAKESIDE)
+marcus, priya, carrier, amara = Phone(setup.NORTHGATE), Phone(setup.PRIYA), Phone(setup.CARRIER), Phone(setup.LAKESIDE)
 spec = importlib.util.spec_from_file_location("phone_web", HERE + "/phone_web.py")
 web = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(web)
@@ -32,6 +32,11 @@ spec.loader.exec_module(web)
 def scene(n, focus=""):
     urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8799/scene/%s" % n, data=b"", method="POST"), timeout=5)
     urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8799/focus", data=focus.encode(), method="POST"), timeout=5)
+
+
+def show_phone(name):
+    """Which phone the recording shows for the rest of the scene: northgate, priya, carrier, lakeside, or '' for the scene's own."""
+    urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8799/phone", data=name.encode(), method="POST"), timeout=5)
 
 
 def one(org, statement):
@@ -65,6 +70,20 @@ def tap(phone, selector):
     on_phone(phone, "document.querySelector(%s).click(); 1" % json.dumps(selector))
 
 
+def pick(phone, selector, words):
+    """Choose the option naming `words` in the select(s) `selector` on the door screen."""
+    on_phone(phone, "Array.prototype.forEach.call(document.querySelectorAll(%s), function (s) { var o = Array.prototype.filter.call(s.options, function (o) { return o.text.indexOf(%s) >= 0; })[0]; if (o) s.value = o.value; }); 1"
+                    % (json.dumps(selector), json.dumps(words)))
+
+
+def wallet_history(phone):
+    """The wallet's own screen, Wallet then History: what it has just been paid."""
+    phone.front()
+    phone.cdp("(function(){var e=[].slice.call(document.querySelectorAll('.dsm-menu-item')).filter(function(x){return x.textContent.trim()=='WALLET'})[0];if(e)e.click();return 1})()")
+    time.sleep(2)
+    phone.press("HISTORY", 2)
+
+
 def door_screen(phone, port, username):
     """Open an organization's door screen in Chrome on the phone, signing in with the wallet on the same phone."""
     web.open_url(phone.serial, "http://%s:%d/openboxes/dsmPhone" % (web.host(), port))
@@ -90,7 +109,7 @@ CHECKS = {
                 need(one("a", "select quantity_drawn from dsm_admission where reference='GRN-77114'") == "500", "500 boxes recorded")],
     5: lambda: need(one("a", "select count(*) from dsm_authority_record where kind='SIGN_IN' and wallet like 'P58T%'") >= "1", "Priya signed in"),
     6: lambda: need(one("a", "select quantity from dsm_custody_transfer where kind='SHIPMENT'") == "120", "120 boxes moved on DSM"),
-    7: lambda: need(one("a", "select units from dsm_carriage where kind='DISPATCHED'") == "120", "120 custody units in Priya's wallet"),
+    7: lambda: need(one("a", "select units from dsm_carriage where kind='DISPATCHED'") == "120", "120 custody units in the driver's wallet"),
     8: lambda: [need(one("b", "select units from dsm_carriage where kind='HANDED_OVER'") == "120", "120 custody units handed over at Lakeside"),
                 need(one("b", "select count(*) from shipment") == "1", "Lakeside made its shipment record")],
     9: lambda: need(one("b", "select quantity_received from dsm_custody_transfer where kind='INBOUND'") == "120", "Lakeside received 120"),
@@ -136,45 +155,55 @@ def do(n):
         wait(120, lambda: one("a", "select count(*) from dsm_custody_transfer where kind='SHIPMENT'") == "1", "shipped: custody moved on DSM")
         time.sleep(6)
     elif n == 7:
-        # On her phone: Northgate's door screen, the Send tab, Hand to carrier (herself), then what she carries.
+        # On Priya's phone: Northgate's Send tab, the driver chosen as carrier, Hand to carrier. Then the driver's wallet, which now holds the units.
         scene(7)
         door_screen(priya, 8081, "priya.nair")
         tap(priya, "[data-go=send]")
-        time.sleep(6)
-        tap(priya, "[data-dispatch]")
-        wait(90, lambda: one("a", "select count(*) from dsm_carriage where kind='DISPATCHED'") == "1", "handed to Priya")
-        time.sleep(6)
-        tap(priya, "[data-go=carry]")
         time.sleep(5)
-    elif n == 8:
-        # On her phone: Lakeside's door screen says 0 of 120 handed over; she hands over, approves the payment in her wallet, takes in.
-        scene(8)
-        door_screen(priya, 8082, "priya.nair")
-        time.sleep(7)
-        tap(priya, "[data-handover][data-mine]")
+        pick(priya, "select[id^=dispatch-]", "Dev Okafor")
         time.sleep(4)
-        priya.approve("Pay 120")
-        web.front(priya.serial)
-        wait(120, lambda: "Take in" in on_phone(priya, "document.getElementById('arriving').innerText"), "handed over on the door screen")
+        tap(priya, "[data-dispatch]")
+        wait(90, lambda: one("a", "select count(*) from dsm_carriage where kind='DISPATCHED'") == "1", "handed to the driver")
+        time.sleep(5)
+        show_phone("carrier")
+        wallet_history(carrier)
+        time.sleep(8)
+        show_phone("")
+    elif n == 8:
+        # Amara's phone: Lakeside's door says 0 of 120 handed over; she asks the driver's wallet; he approves on his phone; she takes in.
+        scene(8)
+        door_screen(amara, 8082, "amara.osei")
+        time.sleep(7)
+        on_phone(amara, "var d = document.querySelector('#arriving details'); if (d) d.open = true; 1")
+        time.sleep(3)
+        pick(amara, "select[id^=carrier-]", "Dev Okafor")
+        time.sleep(3)
+        tap(amara, "[data-handover][data-pick]")
+        time.sleep(4)
+        show_phone("carrier")
+        carrier.approve("Pay 120")
+        time.sleep(3)
+        show_phone("")
+        wait(120, lambda: "Take in" in on_phone(amara, "document.getElementById('arriving').innerText"), "handed over on the door screen")
         time.sleep(6)
-        tap(priya, "[data-take]")
+        tap(amara, "[data-take]")
         wait(90, lambda: one("b", "select count(*) from shipment") == "1", "taken in")
         time.sleep(4)
     elif n == 9:
-        # On her phone: count 130, refused; count 120, received.
+        # Amara's phone: count 130, refused; count 120, received.
         scene(9)
-        tap(priya, "[data-go=receive]")
+        tap(amara, "[data-go=receive]")
         time.sleep(4)
-        tap(priya, "[data-count]")
+        tap(amara, "[data-count]")
         time.sleep(4)
-        on_phone(priya, "document.querySelector('form[data-receive] input').value = '130'; 1")
+        on_phone(amara, "document.querySelector('form[data-receive] input').value = '130'; 1")
         time.sleep(3)
-        tap(priya, "form[data-receive] button[type=submit]")
-        wait(60, lambda: "DSM moved 120" in on_phone(priya, "document.getElementById('toast').textContent"), "130 refused on the phone")
+        tap(amara, "form[data-receive] button[type=submit]")
+        wait(60, lambda: "DSM moved 120" in on_phone(amara, "document.getElementById('toast').textContent"), "130 refused on the phone")
         time.sleep(8)
-        on_phone(priya, "document.querySelector('form[data-receive] input').value = '120'; 1")
+        on_phone(amara, "document.querySelector('form[data-receive] input').value = '120'; 1")
         time.sleep(3)
-        tap(priya, "form[data-receive] button[type=submit]")
+        tap(amara, "form[data-receive] button[type=submit]")
         wait(90, lambda: one("b", "select quantity_received from dsm_custody_transfer where kind='INBOUND'") == "120", "120 received")
         time.sleep(4)
     elif n == 10:

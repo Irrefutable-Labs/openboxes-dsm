@@ -70,8 +70,11 @@ class DsmWalletService {
         return dsmAccountService.offerConnection(homeAccount(), false)
     }
 
-    /** The wallet that has answered `offerDigest`, by the session the account now holds; null until one has. */
-    DsmWallet walletAnswering(String offerDigest) {
+    /**
+     * The wallet that has answered `offerDigest`, by the session the account now holds; null until one has. A `name` is
+     * kept for a wallet no OpenBoxes user will ever stand behind, a carrier's for instance.
+     */
+    DsmWallet walletAnswering(String offerDigest, String name = null) {
         DsmWarehouseAccount home = homeAccount()
         byte[] digest = Base32Crockford.decodeId32(offerDigest, "the offer digest")
         ConnectSessionV1 session = dsmAccountService.sessionsHeldBy(home).find { ConnectSessionV1 held ->
@@ -86,6 +89,9 @@ class DsmWalletService {
         wallet.signingKey = Base64.encoder.encodeToString(session.peerSigningKey.toByteArray())
         wallet.sessionId = Base32Crockford.encode(session.sessionId.toByteArray())
         wallet.offerDigest = offerDigest
+        if (name?.trim() && !wallet.user) {
+            wallet.name = name.trim().take(120)
+        }
         wallet.save(failOnError: true, flush: true)
         return wallet
     }

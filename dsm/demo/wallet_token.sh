@@ -7,7 +7,7 @@ P="$1"; TICKER="$2"; NAME="$3"; SUPPLY="$4"; DESC="$5"; BURN="${6:-}"
 cdp() { python3 "$HERE/wallet_cdp.py" "$P" "$1"; }
 front() {
     local s
-    s=$(adb devices | awk -v p="$P" 'index($1,p){print $1}')
+    s=$(adb devices | awk -F'\t' -v p="$P" 'index($1,p) && $2=="device"{print $1}' | head -n1)
     adb -s "$s" shell dumpsys activity activities | grep -m1 topResumedActivity | grep -q com.dsm.wallet || {
         adb -s "$s" shell input keyevent KEYCODE_BACK; sleep 2
         adb -s "$s" shell am start -n com.dsm.wallet/.ui.MainActivity > /dev/null 2>&1; sleep 4

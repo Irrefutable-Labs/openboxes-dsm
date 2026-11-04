@@ -47,4 +47,5 @@
     <include file="0.9.x/changelog-2026-07-21-1000-create-table-receipt-v2-marker.xml" />
     <include file="0.9.x/changelog-2026-07-21-1200-add-shipping-xls-template-document-type.xml" />
     <include file="0.9.x/changelog-2026-11-01-1200-create-dsm-custody-tables.xml" />
+    <include file="0.9.x/changelog-2026-11-04-1300-dsm-wallet-name.xml" />
 </databaseChangeLog>

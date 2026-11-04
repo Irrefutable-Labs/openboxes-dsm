@@ -18,7 +18,7 @@ case "$ACTION" in
         screen
         ;;
     open)
-        serial=$(adb devices | awk -v p="$PART" 'index($1,p){print $1}')
+        serial=$(adb devices | awk -F'\t' -v p="$PART" 'index($1,p) && $2=="device"{print $1}' | head -n1)
         adb -s "$serial" shell am start -a android.intent.action.VIEW -d "'$3'" com.dsm.wallet 2>&1 | tail -1 | cut -c1-120
         sleep 3
         screen
