@@ -7,6 +7,14 @@ package org.pih.warehouse.dsm
  */
 class DsmTimelineInterceptor {
 
+    def grailsCacheManager
+
+    /** Writes that change what the dashboard's number tiles count; their cache is cleared so the numbers move. */
+    private static final Set<String> STOCK_WRITES = [
+            "dsmPhone", "inventoryItem", "stockMovementApi", "partialReceivingApi", "recordStockApi", "stockTransferApi",
+            "dsmCustodyApi", "dsmWallet", "shipment", "receipt", "inventory", "stockMovement",
+    ] as Set
+
     /** Plain words for the requests the story makes; anything else is named from its controller and action. */
     private static final Map<String, String> LABELS = [
             "auth.login"                    : "Password login page: refused, there are no passwords",
@@ -57,6 +65,10 @@ class DsmTimelineInterceptor {
     }
 
     boolean after() {
+        if (request.method == "POST" && response.status < 400 && STOCK_WRITES.contains(controllerName)) {
+            // the dashboard's number tiles are cached and nothing else clears them
+            grailsCacheManager?.getCache("dashboardCache")?.clear()
+        }
         String key = "${controllerName}.${actionName}".toString()
         if (!controllerName || QUIET.contains(key) || isScreenRefresh()) {
             return true
