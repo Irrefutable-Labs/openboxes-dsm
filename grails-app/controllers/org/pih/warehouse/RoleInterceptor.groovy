@@ -40,6 +40,8 @@ class RoleInterceptor {
         // the DSM screen as a warehouse manager reads it, and the goods they hand to a carrier or take in at the door
         'dsmWallet'           : ['index', 'state', 'reconcile', 'dispatch', 'askHandover'],
         'dsmCustodyApi'       : ['accounts', 'tokens', 'connections', 'admissions', 'inbound', 'transfers', 'establishInbound'],
+        // the phone screen at the door: hand to a carrier, hand over, take in, receive
+        'dsmPhone'            : ['index', 'state', 'dispatch', 'handover', 'takeIn', 'receive'],
         'inventory'           : ['createOutboundTransfer'],
         'stockMovementItemApi': ['eraseItem']
     ]
