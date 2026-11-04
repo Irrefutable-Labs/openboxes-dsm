@@ -79,7 +79,7 @@
                     if (!j || !j.data) return;
                     var s = j.data;
                     after = s.next;
-                    s.web2.forEach(function (e) { web2After = Math.max(web2After, e.seq); add('<span class="dsm-tag web2">WEB2</span>' + esc(e.what) + (e.who ? '<div class="meta">' + esc(e.who) + '</div>' : '')); });
+                    s.web2.forEach(function (e) { web2After = Math.max(web2After, e.seq); add('<span class="dsm-tag web2">WEB2</span>' + esc(e.what) + ((e.who || e.request) ? '<div class="meta">' + esc([e.who, e.request].filter(Boolean).join(' · ')) + '</div>' : '')); });
                     s.dsm.forEach(function (e) {
                         var words = plain(e);
                         if (words === null) return;

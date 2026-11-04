@@ -75,10 +75,22 @@ class DsmReconcileService {
         return rows
     }
 
-    /** Runs each check, and records what changed. One run at a time: a click and the schedule may coincide. */
+    private static final java.util.concurrent.locks.ReentrantLock RUNNING = new java.util.concurrent.locks.ReentrantLock()
+    /** The gap each (account, product) was last recorded at by this process: a second run sees it before the first commits. */
+    private static final Map<String, Long> LAST_RECORDED = new java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /**
+     * Runs each check, and records what changed. One run at a time: a click while the schedule runs measures and
+     * returns, it does not queue behind remote calls.
+     */
     List<Map> runChecks() {
-        synchronized (LAST_GAP) {
+        if (!RUNNING.tryLock()) {
+            return measure()
+        }
+        try {
             return checkAll()
+        } finally {
+            RUNNING.unlock()
         }
     }
 
@@ -88,9 +100,10 @@ class DsmReconcileService {
             String key = "${row.account.id}|${row.product.id}".toString()
             Long previous = LAST_GAP.put(key, row.gap as Long)
             DsmReconcileEvent latest = latestOf(row, [DsmReconcileEvent.KIND_GAP, DsmReconcileEvent.KIND_CLEARED, DsmReconcileEvent.KIND_CORRECTED])
-            long recorded = latest ? (latest.gap as long) : 0L
+            long recorded = LAST_RECORDED.containsKey(key) ? LAST_RECORDED[key] : (latest ? (latest.gap as long) : 0L)
             if (previous != null && previous == row.gap && row.gap != recorded) {
                 record(row, row.gap == 0 ? DsmReconcileEvent.KIND_CLEARED : DsmReconcileEvent.KIND_GAP, null, null, null)
+                LAST_RECORDED[key] = row.gap as Long
             }
             long cacheOff = (row.cached as long) - (row.books as long)
             Long previousOff = LAST_CACHED.put(key, cacheOff)

@@ -15,9 +15,9 @@ class DsmTimeline {
     private DsmTimeline() {
     }
 
-    static void record(String what, String who) {
+    static void record(String what, String who, String request = null) {
         synchronized (ENTRIES) {
-            ENTRIES.addLast([seq: SEQ.incrementAndGet(), what: what, who: who, at: System.currentTimeMillis()])
+            ENTRIES.addLast([seq: SEQ.incrementAndGet(), what: what, who: who, request: request, at: System.currentTimeMillis()])
             if (ENTRIES.size() > KEPT) {
                 ENTRIES.removeFirst()
             }
