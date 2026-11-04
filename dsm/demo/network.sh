@@ -6,10 +6,12 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RUN="$HERE/run"
 # The host must be built from the same DSM code as the wallets it connects to: their signed messages are compared byte for
-# byte. Set DSM_CHECKOUT to that code, and DSM_BIN to where its dsm-app-host was built.
+# byte. Set DSM_BIN to where that code's dsm-app-host was built (DSM_CHECKOUT names the code itself).
+# The fleet it pins is described by fleet/dsm_env_config.toml, with the fleet's CA beside it: a copy kept here, because
+# the host reads the file on every storage call, and a checkout it was read from once went away under running hosts.
 DSM="${DSM_CHECKOUT:-$HERE/../../../dsm-main}"
 BIN="${DSM_BIN:-$DSM/target/release}"
-CONFIG="$DSM/dsm_client/frontend/public/dsm_env_config.toml"
+CONFIG="${DSM_ENV_CONFIG:-$HERE/fleet/dsm_env_config.toml}"
 LAN="${LAN_ADDRESS:-$(ipconfig getifaddr en0)}"
 [ -n "$LAN" ] || { echo "no LAN address: set LAN_ADDRESS" >&2; exit 1; }
 mkdir -p "$RUN/org-a" "$RUN/org-b"

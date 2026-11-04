@@ -120,6 +120,21 @@ def do(n):
         time.sleep(6)
         priya.approve("as priya.nair")
         wait(60, lambda: one("a", "select count(*) from dsm_authority_record where kind='SIGN_IN' and wallet like 'P58T%'") >= "1", "Priya signed in")
+    elif n == 6:
+        # On her phone: Northgate's Send tab, a new shipment from stock: 120 AMX500 to Lakeside, shipped.
+        scene(6)
+        door_screen(priya, 8081, "priya.nair")
+        tap(priya, "[data-go=send]")
+        time.sleep(4)
+        tap(priya, "[data-new=send]")
+        time.sleep(5)
+        on_phone(priya, "var row = Array.prototype.filter.call(document.querySelectorAll('form[data-send] .count'), function (r) { return r.getAttribute('data-find').indexOf('amx500') >= 0; })[0];"
+                        " var i = row.querySelector('input'); i.value = '120'; i.dispatchEvent(new Event('input', {bubbles: true}));"
+                        " document.getElementById('send-note').value = 'Lakeside monthly replenishment PO-77120'; 1")
+        time.sleep(5)
+        tap(priya, "form[data-send] button[type=submit]")
+        wait(120, lambda: one("a", "select count(*) from dsm_custody_transfer where kind='SHIPMENT'") == "1", "shipped: custody moved on DSM")
+        time.sleep(6)
     elif n == 7:
         # On her phone: Northgate's door screen, the Send tab, Hand to carrier (herself), then what she carries.
         scene(7)

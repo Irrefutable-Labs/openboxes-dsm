@@ -2,17 +2,26 @@ package org.pih.warehouse.dsm
 
 import grails.converters.JSON
 import grails.validation.ValidationException
+import org.grails.web.json.JSONObject
 import org.pih.warehouse.api.PartialReceipt
 import org.pih.warehouse.api.PartialReceiptItem
+import org.pih.warehouse.api.StockMovement
+import org.pih.warehouse.api.StockMovementItem
+import org.pih.warehouse.core.Constants
 import org.pih.warehouse.core.Location
 import org.pih.warehouse.core.User
+import org.pih.warehouse.product.ProductAvailability
+import org.pih.warehouse.inventory.StockMovementStatusCode
 import org.pih.warehouse.product.Product
+import org.pih.warehouse.requisition.Requisition
+import org.pih.warehouse.requisition.RequisitionType
 import org.pih.warehouse.shipping.Shipment
+import org.pih.warehouse.shipping.ShipmentType
 import org.springframework.http.HttpStatus
 
 /**
  * The phone screen: what a person signed in with their wallet does with the goods in front of them. At the sending
- * warehouse they hand a sent shipment to a carrier. At the receiving warehouse the carrier hands custody over from
+ * warehouse they send from the stock on hand and hand the shipment to a carrier. At the receiving warehouse the carrier hands custody over from
  * their own phone, and the goods are taken in and received, line by line as counted. Every step is the same DSM
  * movement the desktop screen makes; the organization's setup stays on the desktop DSM screen.
  */
@@ -22,6 +31,7 @@ class DsmPhoneController {
     DsmCarriageService dsmCarriageService
     DsmWalletService dsmWalletService
     def receiptService
+    def stockMovementService
 
     def index() {
         [location: Location.get(session.warehouse?.id)]
@@ -40,7 +50,68 @@ class DsmPhoneController {
                     receiving: receiving(),
                     leaving  : leaving(),
                     carrying : me ? carrying(me) : [],
+                    stock    : stock(),
+                    partners : partners(),
             ]
+        }
+    }
+
+    /**
+     * Send from the stock on hand: a stock movement to a connected DSM warehouse, picked from what is available, and
+     * shipped now. Shipping is what moves the custody on DSM; if DSM refuses, nothing leaves.
+     */
+    def send() {
+        attempt {
+            Location origin = Location.get(session.warehouse?.id)
+            Location destination = Location.get(params.destinationId)
+            if (!destination || destination.id == origin?.id) {
+                throw new DsmCustodyException("choose the warehouse this goes to")
+            }
+            if (!partners().any { Map p -> p.id == destination.id }) {
+                throw new DsmCustodyException("${destination.name} is not a DSM warehouse this one is connected to")
+            }
+            User user = User.get(session.user.id)
+            Date now = new Date()
+            List<StockMovementItem> lines = []
+            int order = 100
+            stock().each { Map row ->
+                String counted = params["quantity.${row.id}"]
+                int quantity = counted ? counted as Integer : 0
+                if (quantity > 0) {
+                    if (quantity > (row.available as Long)) {
+                        throw new DsmCustodyException("only ${row.available} ${row.code} are available to send")
+                    }
+                    lines << new StockMovementItem(product: Product.get(row.id), quantityRequested: quantity, sortOrder: order)
+                    order += 100
+                }
+            }
+            if (!lines) {
+                throw new DsmCustodyException("count what goes: every line is at 0")
+            }
+            StockMovement movement = new StockMovement(origin: origin, destination: destination, requestedBy: user,
+                    dateRequested: now, requestType: RequisitionType.STOCK, description: params.note?.trim() ?: null,
+                    lineItems: lines)
+            StockMovement created = stockMovementService.createStockMovement(movement)
+            [StockMovementStatusCode.PICKING, StockMovementStatusCode.PICKED, StockMovementStatusCode.CHECKING].each {
+                StockMovementStatusCode step ->
+                Map change = [status: step.name()]
+                if (step == StockMovementStatusCode.PICKING) {
+                    change.createPicklist = true
+                }
+                stockMovementService.transitionStockMovement(stockMovementService.getStockMovement(created.id), new JSONObject(change))
+            }
+            StockMovement ready = stockMovementService.getStockMovement(created.id)
+            ready.shipmentType = ShipmentType.get(Constants.DEFAULT_SHIPMENT_TYPE_ID)
+            ready.dateShipped = now
+            ready.expectedDeliveryDate = now
+            ready.driverName = user.name
+            stockMovementService.updateShipment(ready)
+            // the shipment was made in this same request: the requisition is re-read so it finds it
+            Requisition.get(created.id).refresh()
+            stockMovementService.transitionStockMovement(stockMovementService.getStockMovement(created.id),
+                    new JSONObject([status: StockMovementStatusCode.DISPATCHED.name()]))
+            Shipment shipment = stockMovementService.getStockMovement(created.id).shipment
+            [number: shipment.shipmentNumber, units: lines.sum { StockMovementItem l -> l.quantityRequested }, to: destination.name]
         }
     }
 
@@ -147,6 +218,34 @@ class DsmPhoneController {
              carrier: carriage ? [label: labelOf(carriage.walletDeviceId), units: carriage.units, ticker: carriage.token.ticker,
                                   at: carriage.dateCreated] : null]
         }.take(12)
+    }
+
+    /** What is on hand here and available to send, by product. */
+    private List<Map> stock() {
+        Location here = Location.get(session.warehouse?.id)
+        if (!here) {
+            return []
+        }
+        List rows = ProductAvailability.executeQuery("""
+                select pa.product, sum(case when pa.quantityAvailableToPromise > 0 then pa.quantityAvailableToPromise else 0 end)
+                from ProductAvailability pa where pa.location = :here group by pa.product""", [here: here])
+        rows.findAll { Object[] row -> (row[1] as Long) > 0 }
+                .collect { Object[] row -> Product product = row[0] as Product
+                    [id: product.id, code: product.productCode, name: product.name, available: row[1] as Long] }
+                .sort { Map a, Map b -> (a.name as String).compareToIgnoreCase(b.name as String) }
+                .take(80)
+    }
+
+    /** The DSM warehouses this one is connected to: the only places custody can be sent. */
+    private List<Map> partners() {
+        DsmWarehouseAccount home = dsmWalletService.homeAccount()
+        if (!home) {
+            return []
+        }
+        DsmConnection.findAllByAccount(home).findAll { DsmConnection c -> c.peerLocation }
+                .collect { DsmConnection c -> [id: c.peerLocation.id, name: c.peerLocation.name] }
+                .unique { Map p -> p.id }
+                .sort { Map p -> p.name }
     }
 
     /** What this organization handed to the signed-in wallet to carry. */

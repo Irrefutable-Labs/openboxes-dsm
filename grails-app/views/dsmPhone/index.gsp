@@ -47,7 +47,9 @@
         .btn.secondary { background: #e6edf7; color: var(--primary); }
         .btn.ghost { background: transparent; color: var(--primary); min-height: 40px; margin-top: 4px; }
         .btn:disabled { opacity: .55; }
-        select { width: 100%; min-height: 48px; margin-top: 10px; padding: 8px 12px; border-radius: 10px; border: 1px solid #c9d2dd; background: #fff; font: inherit; color: var(--ink); }
+        select, input.text { width: 100%; min-height: 48px; margin-top: 10px; padding: 8px 12px; border-radius: 10px; border: 1px solid #c9d2dd; background: #fff; font: inherit; color: var(--ink); box-sizing: border-box; }
+        .lines { margin-top: 6px; max-height: 46vh; overflow-y: auto; border-top: 1px solid var(--line); }
+        .count[hidden] { display: none; }
         label { display: block; font-size: 13px; color: var(--muted); margin-top: 12px; font-weight: 600; }
         details summary { list-style: none; cursor: pointer; color: var(--primary); font-weight: 600; font-size: 14px; margin-top: 12px; }
         details summary::-webkit-details-marker { display: none; }
@@ -92,9 +94,10 @@
     (function () {
         var urls = {
             state: '${createLink(action: 'state')}', dispatch: '${createLink(action: 'dispatch')}',
-            handover: '${createLink(action: 'handover')}', takeIn: '${createLink(action: 'takeIn')}', receive: '${createLink(action: 'receive')}'
+            handover: '${createLink(action: 'handover')}', takeIn: '${createLink(action: 'takeIn')}', receive: '${createLink(action: 'receive')}',
+            send: '${createLink(action: 'send')}'
         };
-        var state = { wallets: [], me: null, arriving: [], receiving: [], leaving: [], carrying: [] };
+        var state = { wallets: [], me: null, arriving: [], receiving: [], leaving: [], carrying: [], stock: [], partners: [] };
         var open = {}, busy = false, timer = null, toastTimer = null;
         function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
         function toast(text, kind) {
@@ -135,7 +138,7 @@
             }).join('') + '</select>';
         }
         function arriving(list) {
-            if (!list.length) return empty('Nothing is on its way to this door.');
+            if (!list.length) return empty('Nothing is on its way to this door. Carriers hand over here, and what arrives without one is taken in on sight.');
             return list.map(function (d) {
                 var take = '<button class="btn" data-take="' + esc(d.memo) + '" data-peer="' + esc(d.peerDeviceId) + '">Take in</button>';
                 var h = '<article class="card"><div class="card-head"><div><div class="doc">' + esc(d.number) + '</div><div class="route">From <b>' + esc(d.from) + '</b></div></div>';
@@ -166,9 +169,29 @@
                 return h + '</article>';
             }).join('');
         }
+        function sendForm() {
+            if (!state.partners.length) return '<article class="card"><p class="note wait">This warehouse is not connected to another DSM warehouse yet, so nothing can be sent from here.</p></article>';
+            if (!state.stock.length) return '<article class="card"><p class="note wait">Nothing is in stock here to send.</p></article>';
+            var h = '<article class="card"><form data-send="1"><div class="card-head"><div><div class="doc">New shipment</div><div class="route">From stock on hand</div></div></div>';
+            h += '<label for="send-to">To</label><select id="send-to" name="destinationId">' + state.partners.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>'; }).join('') + '</select>';
+            h += '<label for="send-filter">Find a product</label><input id="send-filter" class="text" type="search" placeholder="Name or code" autocomplete="off"/>';
+            h += '<div class="lines">' + state.stock.map(function (i) {
+                return '<div class="count" data-find="' + esc((i.name + ' ' + i.code).toLowerCase()) + '"><div class="p"><b>' + esc(i.name || i.code) + '</b><small>' + esc(i.code) + '. ' + esc(i.available) + ' available</small></div><div class="stepper"><button type="button" data-step="-1">&minus;</button><input type="number" inputmode="numeric" min="0" max="' + esc(i.available) + '" name="quantity.' + esc(i.id) + '" value="0"/><button type="button" data-step="1">+</button></div></div>';
+            }).join('') + '</div>';
+            h += '<label for="send-note">Note</label><input id="send-note" class="text" name="note" maxlength="255" placeholder="Optional"/>';
+            h += '<button type="submit" class="btn" disabled>Count what goes</button><button type="button" class="btn ghost" data-close="send">Not now</button></form></article>';
+            return h;
+        }
+        function sendTotal(form) {
+            var n = 0;
+            Array.prototype.forEach.call(form.querySelectorAll('.count input'), function (i) { n += parseInt(i.value, 10) || 0; });
+            var to = form.querySelector('#send-to'), b = form.querySelector('button[type=submit]');
+            b.disabled = !n; b.textContent = n ? 'Ship ' + n + ' units to ' + to.options[to.selectedIndex].text : 'Count what goes';
+        }
         function leaving(list) {
-            if (!list.length) return empty('Nothing sent from here is waiting for a carrier.');
-            return list.map(function (d) {
+            var top = open.send ? sendForm() : '<button class="btn" data-new="send">Send from stock</button>';
+            if (!list.length) return top + empty('Nothing sent from here is waiting for a carrier.');
+            return top + list.map(function (d) {
                 var h = '<article class="card"><div class="card-head"><div><div class="doc">' + esc(d.number) + '</div><div class="route">To <b>' + esc(d.to) + '</b></div></div>';
                 if (d.carrier) h += '<span class="pill ok">With carrier</span></div>' + items(d.lines) + steps(2) + '<p class="note ok">' + esc(d.carrier.label) + ' carries it: ' + esc(d.carrier.units) + ' ' + esc(d.carrier.ticker) + ' in their wallet.</p>';
                 else h += '<span class="pill wait">Needs a carrier</span></div>' + items(d.lines) + steps(1) + '<label>Carrier</label>' + picker('dispatch-' + d.number) + '<button class="btn" data-dispatch="' + esc(d.memo) + '" data-pick="dispatch-' + esc(d.number) + '">Hand to carrier</button>';
@@ -188,8 +211,9 @@
             document.getElementById('where').textContent = s.location || 'OpenBoxes';
             document.getElementById('who').textContent = (s.user || '') + (s.me ? ' · wallet ' + s.me.deviceId : ' · no wallet on this session');
             document.getElementById('arriving').innerHTML = arriving(s.arriving);
-            document.getElementById('receiving').innerHTML = receiving(s.receiving);
-            document.getElementById('leaving').innerHTML = leaving(s.leaving);
+            // a form being filled in is left alone until it is sent or closed
+            if (!Object.keys(open).some(function (k) { return k !== 'send'; })) document.getElementById('receiving').innerHTML = receiving(s.receiving);
+            if (!open.send) document.getElementById('leaving').innerHTML = leaving(s.leaving);
             document.getElementById('carrying').innerHTML = carrying(s.carrying);
             var waiting = s.leaving.filter(function (d) { return !d.carrier; }).length;
             badge('door', s.arriving.length); badge('receive', s.receiving.length); badge('send', waiting); badge('carry', s.carrying.length);
@@ -219,7 +243,14 @@
             var tab = b.getAttribute('data-go');
             if (tab) return go(tab);
             var step = b.getAttribute('data-step');
-            if (step) { var i = b.parentNode.querySelector('input'); i.value = Math.max(0, (parseInt(i.value, 10) || 0) + parseInt(step, 10)); return; }
+            if (step) {
+                var i = b.parentNode.querySelector('input'), top = i.max ? parseInt(i.max, 10) : Infinity;
+                i.value = Math.min(top, Math.max(0, (parseInt(i.value, 10) || 0) + parseInt(step, 10)));
+                var f = b.closest('form[data-send]'); if (f) sendTotal(f);
+                return;
+            }
+            if (b.getAttribute('data-new') === 'send') { open.send = true; document.getElementById('leaving').innerHTML = leaving(state.leaving); document.getElementById('send-to').focus(); return; }
+            if (b.getAttribute('data-close') === 'send') { delete open.send; document.getElementById('leaving').innerHTML = leaving(state.leaving); return; }
             var memo = b.getAttribute('data-take');
             if (memo) {
                 b.disabled = true; toast('Taking in.');
@@ -243,8 +274,26 @@
             id = b.getAttribute('data-close');
             if (id) { delete open[id]; document.getElementById('receiving').innerHTML = receiving(state.receiving); }
         });
+        document.addEventListener('input', function (e) {
+            var form = e.target.closest ? e.target.closest('form[data-send]') : null;
+            if (!form) return;
+            if (e.target.id === 'send-filter') {
+                var q = e.target.value.trim().toLowerCase();
+                Array.prototype.forEach.call(form.querySelectorAll('.count'), function (row) { row.hidden = q && row.getAttribute('data-find').indexOf(q) < 0 && !(parseInt(row.querySelector('input').value, 10) > 0); });
+            }
+            sendTotal(form);
+        });
+        document.addEventListener('change', function (e) { var f = e.target.closest ? e.target.closest('form[data-send]') : null; if (f) sendTotal(f); });
         document.addEventListener('submit', function (e) {
             var form = e.target, id = form.getAttribute('data-receive');
+            if (form.getAttribute('data-send')) {
+                e.preventDefault();
+                var fields = {};
+                Array.prototype.forEach.call(form.querySelectorAll('input, select'), function (i) { if (i.name) fields[i.name] = i.value; });
+                form.querySelector('button[type=submit]').disabled = true;
+                toast('Shipping. DSM moves the custody now.');
+                return act(call('send', fields), function (r) { delete open.send; return 'Shipment ' + r.number + ' sent: ' + r.units + ' units to ' + r.to + '. Hand it to a carrier.'; });
+            }
             if (!id) return;
             e.preventDefault();
             var fields = { shipmentId: id };

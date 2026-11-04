@@ -27,7 +27,7 @@ done in the browser. Nothing is left to chance: a beat whose check fails stops t
   so her wallet is the carrier's wallet: Northgate's custody token `NGCUST` is made in Marcus's wallet, and her wallet
   adopted it before the recording.
 - The shipment is prepared off camera up to its send step. The send, and everything DSM does, happens on camera.
-- Scenes 7 to 9 happen on Priya's phone: the door screen (`/dsmPhone`) in Chrome, shown large on the recording. She signs
+- Scenes 6 to 9 happen on Priya's phone: the door screen (`/dsmPhone`) in Chrome, shown large on the recording. She signs
   in at each organization with the wallet on the same phone. The phone keeps one session per host whatever the port, so
   the demo's two organizations on one address are used one tab at a time; `play.py do 7|8|9` drives it all.
 - The 40 boxes are added by a real database edit from a terminal (`tamper.sh`), which the viewer does not see being typed.
@@ -42,7 +42,7 @@ done in the browser. Nothing is left to chance: a beat whose check fails stops t
 | 3 | Marcus gives Priya a seat | DSM page |
 | 4 | 500 boxes admitted on the registry's phone, recorded: $9,200 | DSM page, stock page |
 | 5 | Priya signs in on her phone | Northgate, Priya's phone |
-| 6 | Priya ships 120 boxes: $2,208 | Send page |
+| 6 | Priya ships 120 boxes from her phone, from the stock on hand: $2,208 | Priya's phone, Send |
 | 7 | Priya takes the boxes: on her phone, Northgate hands them to her, 120 custody units in her wallet | Priya's phone, Send and Carry |
 | 8 | Lakeside's door shows 0 of 120 handed over; she hands over from her phone, approves in her wallet, takes in | Priya's phone, Door |
 | 9 | Counting 130 is refused on the phone, 120 is received | Priya's phone, Receive |

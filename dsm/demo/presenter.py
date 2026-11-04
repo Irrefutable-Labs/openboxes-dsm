@@ -31,9 +31,9 @@ SCENES = [
     ("Priya signs in. Her access comes from her seat, not from a database role",
      "OpenBoxes shows her manager's screens.",
      "Her wallet signs in, and her vault is read from the storage nodes on every single click.", "lakeside"),
-    ("Priya ships 120 boxes to Lakeside: $2,208",
-     "OpenBoxes creates the shipment and its paperwork.",
-     "Custody moves on DSM before the books change. If DSM refuses, nothing is recorded.", None),
+    ("Priya ships 120 boxes to Lakeside from her phone: $2,208",
+     "OpenBoxes creates the shipment and its paperwork from the stock on hand.",
+     "Custody moves on DSM before the books change. If DSM refuses, nothing is recorded.", "lakeside"),
     ("Priya takes the boxes with her. On her phone, Northgate hands them to her",
      "OpenBoxes has no idea who is carrying what; a paper manifest at best.",
      "Northgate's account pays 120 custody units to her wallet. She holds the goods now, and nothing else of value.", "lakeside"),
@@ -61,7 +61,7 @@ SCENES = [
 ]
 
 # Scenes that happen on the phone: its screen is shown large, the page behind it dimmed.
-ON_THE_PHONE = {7, 8, 9}
+ON_THE_PHONE = {6, 7, 8, 9}
 
 state = {"scene": 0, "focus": []}
 images = {}

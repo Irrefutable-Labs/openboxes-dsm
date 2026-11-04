@@ -41,7 +41,7 @@ class RoleInterceptor {
         'dsmWallet'           : ['index', 'state', 'reconcile', 'dispatch', 'askHandover'],
         'dsmCustodyApi'       : ['accounts', 'tokens', 'connections', 'admissions', 'inbound', 'transfers', 'establishInbound'],
         // the phone screen at the door: hand to a carrier, hand over, take in, receive
-        'dsmPhone'            : ['index', 'state', 'dispatch', 'handover', 'takeIn', 'receive'],
+        'dsmPhone'            : ['index', 'state', 'dispatch', 'handover', 'takeIn', 'receive', 'send'],
         'inventory'           : ['createOutboundTransfer'],
         'stockMovementItemApi': ['eraseItem']
     ]
