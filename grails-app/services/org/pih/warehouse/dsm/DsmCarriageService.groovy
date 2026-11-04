@@ -197,8 +197,15 @@ class DsmCarriageService {
     }
 
     /**
+     * A payment a wallet made on a Connect request carries the request's reference before the memo asked for:
+     * `dsm-connect:<session>:<seq> <memo>` (DSM `payment_memo`). The session is the one the request was made on.
+     */
+    static final java.util.regex.Pattern CONNECT_PAYMENT_MEMO = ~/^dsm-connect:([0-9A-Z]{52}):(\d+) (.*)$/
+
+    /**
      * How a partner's shipment stands at this account's door, from the account's own history: the custody units
-     * wallets have paid it under the memo, of the partner's custody token. Null when the partner hands no custody over.
+     * wallets have paid it under the memo, of the partner's custody token, either sent plainly or paid on a request
+     * this account made over a connected wallet's session. Null when the partner hands no custody over.
      *
      * @return `required`, `units` handed over so far, `by` the device that paid them, `transferId` of the latest credit
      */
@@ -207,17 +214,21 @@ class DsmCarriageService {
         if (!token) {
             return null
         }
-        return handoverIn(rows, token.ticker, memo, ownDevices)
+        return handoverIn(rows, token.ticker, memo, ownDevices, DsmWallet.list()*.sessionId)
     }
 
-    /** The custody units `rows` credit under `memo` of `ticker` from wallets (devices that are none of `ownDevices`). */
-    static Map handoverIn(List<TransactionInfo> rows, String ticker, String memo, Collection<String> ownDevices) {
+    /**
+     * The custody units `rows` credit under `memo` of `ticker` from wallets (devices that are none of `ownDevices`): rows
+     * whose memo is `memo` itself, or a Connect payment of `memo` on one of `walletSessions`.
+     */
+    static Map handoverIn(List<TransactionInfo> rows, String ticker, String memo, Collection<String> ownDevices,
+                          Collection<String> walletSessions = []) {
         long units = 0L
         String by = null
         String transferId = null
         rows.each { TransactionInfo row ->
             if (row.txType != TransactionType.TX_TYPE_ONLINE || row.direction != AmountDirection.AMOUNT_DIRECTION_CREDIT
-                    || row.tokenId != ticker || row.memo != memo || row.fromDeviceId.size() != 32) {
+                    || row.tokenId != ticker || row.fromDeviceId.size() != 32 || !paysFor(row.memo, memo, walletSessions)) {
                 return
             }
             String from = Base32Crockford.encode(row.fromDeviceId.toByteArray())
@@ -229,6 +240,15 @@ class DsmCarriageService {
             transferId = transferId ?: row.id
         }
         return [required: true, units: units, by: by, transferId: transferId]
+    }
+
+    /** Whether a history row's memo is `memo`, or a Connect payment of `memo` made on one of `walletSessions`. */
+    static boolean paysFor(String rowMemo, String memo, Collection<String> walletSessions) {
+        if (rowMemo == memo) {
+            return true
+        }
+        java.util.regex.Matcher paid = CONNECT_PAYMENT_MEMO.matcher(rowMemo ?: "")
+        return paid.matches() && paid.group(3) == memo && paid.group(1) in walletSessions
     }
 
     /** Record that `account` holds a shipment's hand-over, once; the record is bookkeeping, the credit is the fact. */

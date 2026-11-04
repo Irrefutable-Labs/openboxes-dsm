@@ -62,6 +62,20 @@ class DsmCarriageServiceSpec extends Specification {
         ]
     }
 
+    void 'a payment made on a request this account sent over a connected wallet session carries the memo behind its reference'() {
+        given:
+        String session = device(9)
+        String paid = "dsm-connect:${session}:3 ${MEMO}".toString()
+
+        expect:
+        DsmCarriageService.handoverIn([credit(CARRIER, "NGCUST", 120L, paid)], "NGCUST", MEMO, [ACCOUNT], [session]).units == 120L
+        DsmCarriageService.handoverIn([credit(CARRIER, "NGCUST", 120L, paid)], "NGCUST", MEMO, [ACCOUNT], [device(8)]).units == 0L
+        DsmCarriageService.handoverIn([credit(CARRIER, "NGCUST", 120L, paid)], "NGCUST", MEMO, [ACCOUNT]).units == 0L
+        !DsmCarriageService.paysFor("dsm-connect:${session}:3 openboxes:shipment:OTHER".toString(), MEMO, [session])
+        !DsmCarriageService.paysFor("dsm-connect:${session}:3".toString(), MEMO, [session])
+        DsmCarriageService.paysFor(MEMO, MEMO, [])
+    }
+
     void 'two hand-overs of one shipment add up, and the first wallet is the one named'() {
         when:
         Map handover = DsmCarriageService.handoverIn([credit(CARRIER, "NGCUST", 70L), credit(OTHER, "NGCUST", 50L)],
