@@ -407,4 +407,35 @@
             <column name="date_created" type="DATETIME"><constraints nullable="false"/></column>
         </createTable>
     </changeSet>
+    <changeSet author="cryptskii" id="041120260100-0">
+        <preConditions onFail="MARK_RAN"><not><tableExists tableName="dsm_custody_token"/></not></preConditions>
+        <createTable tableName="dsm_custody_token">
+            <column name="id" type="CHAR(38)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="policy_anchor" type="CHAR(52)"><constraints nullable="false" unique="true"/></column>
+            <column name="ticker" type="VARCHAR(8)"><constraints nullable="false"/></column>
+            <column name="creator_id" type="CHAR(38)"/>
+            <column name="peer_id" type="CHAR(38)"><constraints unique="true"/></column>
+            <column name="date_created" type="DATETIME"><constraints nullable="false"/></column>
+        </createTable>
+        <addForeignKeyConstraint baseColumnNames="creator_id" baseTableName="dsm_custody_token" constraintName="fk_dsm_custody_token_creator" referencedColumnNames="id" referencedTableName="dsm_wallet"/>
+        <addForeignKeyConstraint baseColumnNames="peer_id" baseTableName="dsm_custody_token" constraintName="fk_dsm_custody_token_peer" referencedColumnNames="id" referencedTableName="dsm_connection"/>
+    </changeSet>
+    <changeSet author="cryptskii" id="041120260100-1">
+        <preConditions onFail="MARK_RAN"><not><tableExists tableName="dsm_carriage"/></not></preConditions>
+        <createTable tableName="dsm_carriage">
+            <column name="id" type="CHAR(38)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="kind" type="VARCHAR(16)"><constraints nullable="false"/></column>
+            <column name="account_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="token_id" type="CHAR(38)"><constraints nullable="false"/></column>
+            <column name="memo" type="VARCHAR(256)"><constraints nullable="false"/></column>
+            <column name="wallet_device_id" type="CHAR(52)"><constraints nullable="false"/></column>
+            <column name="units" type="INT"><constraints nullable="false"/></column>
+            <column name="state_hash" type="CHAR(52)"/>
+            <column name="transfer_id" type="VARCHAR(255)"/>
+            <column name="date_created" type="DATETIME"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="dsm_carriage" columnNames="kind, memo" constraintName="uk_dsm_carriage_kind_memo"/>
+        <addForeignKeyConstraint baseColumnNames="account_id" baseTableName="dsm_carriage" constraintName="fk_dsm_carriage_account" referencedColumnNames="id" referencedTableName="dsm_warehouse_account"/>
+        <addForeignKeyConstraint baseColumnNames="token_id" baseTableName="dsm_carriage" constraintName="fk_dsm_carriage_token" referencedColumnNames="id" referencedTableName="dsm_custody_token"/>
+    </changeSet>
 </databaseChangeLog>

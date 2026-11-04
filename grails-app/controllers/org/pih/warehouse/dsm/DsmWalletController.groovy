@@ -20,6 +20,7 @@ class DsmWalletController {
     DsmWalletService dsmWalletService
     DsmAccountService dsmAccountService
     DsmReconcileService dsmReconcileService
+    DsmCarriageService dsmCarriageService
 
     def index() {
         [locations: Location.list().findAll { Location location -> !location.parentLocation }]
@@ -53,6 +54,11 @@ class DsmWalletController {
                         [id: s.id, level: s.level.name, number: s.number, holder: s.holder.label,
                          authority: s.authority.label, location: s.location.name, status: s.status,
                          cell: s.verdictCell, vault: s.vaultId.take(10)]
+                    },
+                    custody     : custodyTokens(home),
+                    carriages   : DsmCarriage.list(sort: "dateCreated", order: "desc").collect { DsmCarriage c ->
+                        [kind: c.kind, memo: c.memo, units: c.units, wallet: c.walletDeviceId.take(8), ticker: c.token.ticker,
+                         at: c.dateCreated]
                     },
             ]
         }
@@ -94,6 +100,57 @@ class DsmWalletController {
                 dsmAccountService.confirmConnection(dsmWalletService.homeAccount(), digest, null, true)
             }
             [answered: wallet != null, deviceId: wallet?.deviceId?.take(8)]
+        }
+    }
+
+    /** The custody tokens this organization knows: its own, with the units its account can dispatch, and its partners'. */
+    private Map custodyTokens(DsmWarehouseAccount home) {
+        if (!home) {
+            return [own: null, partners: [], connections: []]
+        }
+        DsmCustodyToken own = dsmCarriageService.ownToken()
+        [
+                own        : own ? [id: own.id, ticker: own.ticker, anchor: own.policyAnchor, creator: own.creator.label,
+                                    spare: dsmCarriageService.spareUnits()] : null,
+                partners   : DsmCustodyToken.findAllByPeerIsNotNull().collect { DsmCustodyToken t ->
+                    [id: t.id, ticker: t.ticker, anchor: t.policyAnchor, peer: t.peer.toString()]
+                },
+                connections: DsmConnection.findAllByAccountAndPeerLocationIsNotNull(home).collect { DsmConnection c ->
+                    [id: c.id, name: c.toString()]
+                },
+        ]
+    }
+
+    def addCustodyToken() {
+        attempt {
+            DsmCustodyToken token = params.connectionId
+                    ? dsmCarriageService.addPartnerToken(params.policyAnchor?.trim(), DsmConnection.get(params.connectionId))
+                    : dsmCarriageService.addOwnToken(params.policyAnchor?.trim(), DsmWallet.get(params.creatorId))
+            [id: token.id, ticker: token.ticker]
+        }
+    }
+
+    def requestCustodyUnits() {
+        attempt { [seq: dsmCarriageService.requestUnits((params.quantity ?: "0") as long)] }
+    }
+
+    /** Hand a sent shipment to a carrier: the account pays its custody units to the carrier's wallet. */
+    def dispatch() {
+        attempt {
+            DsmCarriage carriage = dsmCarriageService.dispatch(params.memo, DsmWallet.get(params.walletId))
+            [units: carriage.units, ticker: carriage.token.ticker, wallet: carriage.walletDeviceId.take(8)]
+        }
+    }
+
+    /** Ask a carrier's wallet to hand a partner's shipment over to this organization's account. */
+    def askHandover() {
+        attempt {
+            DsmWarehouseAccount home = dsmWalletService.homeAccount()
+            DsmConnection peer = DsmConnection.findByAccountAndPeerDeviceId(home, params.peerDeviceId)
+            if (!peer) {
+                throw new DsmCustodyException("no partner ${params.peerDeviceId} is connected to ${home}")
+            }
+            [seq: dsmCarriageService.askHandover(peer, params.memo, (params.units ?: "0") as int, DsmWallet.get(params.walletId))]
         }
     }
 

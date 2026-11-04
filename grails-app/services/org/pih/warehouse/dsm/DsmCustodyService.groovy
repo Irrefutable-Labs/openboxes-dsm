@@ -74,6 +74,7 @@ class DsmCustodyService {
 
     DsmAccountService dsmAccountService
     DsmAdmissionService dsmAdmissionService
+    DsmCarriageService dsmCarriageService
     TransactionIdentifierService transactionIdentifierService
     ShipmentIdentifierService shipmentIdentifierService
     AuthService authService
@@ -155,15 +156,19 @@ class DsmCustodyService {
     /**
      * What peers have sent this organization's accounts that it has not yet made a shipment record of: each account's
      * inbox taken in, then its own history read. A row counts only if it comes from a connected peer's warehouse and
-     * is of a token this organization adopted.
+     * is of a token this organization adopted. Where the peer's shipments are carried (DsmCustodyToken), each document
+     * also says how it stands at the door: `carriage.required`, and the custody units `handedOver` so far, `by` whom.
      */
     List<Map> inboundCustody() {
         List<Map> inbound = []
+        List<String> ownDevices = DsmWarehouseAccount.list()*.deviceId
         DsmWarehouseAccount.findAllByLocationIsNotNull().each { DsmWarehouseAccount account ->
             DsmHostClient client = dsmAccountService.clientFor(account)
             syncInbox(client, account)
             Map<List, Map> byDocument = [:]
-            client.history(HISTORY_ROWS, 0).each { TransactionInfo row ->
+            Map<List, DsmConnection> peerOf = [:]
+            List<TransactionInfo> rows = client.history(HISTORY_ROWS, 0)
+            rows.each { TransactionInfo row ->
                 if (row.txType != TransactionType.TX_TYPE_ONLINE || row.direction != AmountDirection.AMOUNT_DIRECTION_CREDIT
                         || !row.memo.startsWith(MEMO_SHIPMENT) || row.fromDeviceId.size() != 32) {
                     return
@@ -179,12 +184,21 @@ class DsmCustodyService {
                     return
                 }
                 Map document = byDocument.computeIfAbsent([from, row.memo]) {
+                    peerOf[[from, row.memo]] = peer
                     [memo: row.memo, peerDeviceId: from, originLocationId: peer.peerLocation.id,
                      originName: peer.peerLocation.name, accountId: account.id,
                      destinationLocationId: account.location.id, lines: []]
                 }
                 document.lines << [productId: token.product.id, productCode: token.product.productCode,
                                    ticker: token.ticker, quantity: row.amount, transferId: row.id]
+            }
+            byDocument.each { List key, Map document ->
+                document.units = (document.lines.sum { Map line -> line.quantity as long } ?: 0L) as long
+                Map handover = DsmCarriageService.handoverOf(peerOf[key], document.memo as String, rows, ownDevices)
+                document.carriage = handover
+                        ? [required: true, handedOver: handover.units, by: (handover.by as String)?.take(8),
+                           arrived: (handover.units as long) >= (document.units as long)]
+                        : [required: false]
             }
             inbound.addAll(byDocument.values())
         }
@@ -204,6 +218,13 @@ class DsmCustodyService {
         }
         DsmWarehouseAccount account = DsmWarehouseAccount.get(document.accountId)
         Location origin = Location.get(document.originLocationId)
+        Map carriage = document.carriage as Map
+        if (carriage.required && !carriage.arrived) {
+            throw new DsmCustodyException(
+                    "${memo.substring(MEMO_SHIPMENT.length())} is on its way from ${origin.name}: ${account} has been handed " +
+                            "${carriage.handedOver} of its ${document.units} units. The carrier hands them over on their phone " +
+                            "when they arrive; until then nothing is taken in.")
+        }
         User user = authService.currentUser
         Shipment shipment = new Shipment(
                 name: "${origin.name}: ${memo.substring(MEMO_SHIPMENT.length())}".toString(),
@@ -234,6 +255,11 @@ class DsmCustodyService {
                     dateEstablished: new Date(),
                     destinationTransferId: line.transferId,
             ).save(failOnError: true, flush: true)
+        }
+        if (carriage.required) {
+            dsmCarriageService.recordHandover(account, DsmConnection.findByAccountAndPeerDeviceId(account, peerDeviceId), memo,
+                    document.units as int, DsmCarriageService.handoverOf(DsmConnection.findByAccountAndPeerDeviceId(account, peerDeviceId),
+                    memo, dsmAccountService.clientFor(account).history(HISTORY_ROWS, 0), DsmWarehouseAccount.list()*.deviceId))
         }
         // The peer's own books debited it; here it is only marked on its way, so it can be received.
         shipmentService.sendShipment(shipment, null, user, account.location, new Date(), false)

@@ -274,7 +274,7 @@ class DsmAccountService {
     }
 
     /** Have `account` root the anchor (`tokens.addByAnchor`, idempotent on the host); the policy's ticker. */
-    private String rootAnchorAt(DsmWarehouseAccount account, String policyAnchor) {
+    String rootAnchorAt(DsmWarehouseAccount account, String policyAnchor) {
         // The route takes the anchor's own text as its arguments, not an arg pack.
         Envelope envelope = clientFor(account).invokeRawArgsQuietly("tokens.addByAnchor", policyAnchor.getBytes("UTF-8"))
         if (envelope.payloadCase == Envelope.PayloadCase.ERROR) {

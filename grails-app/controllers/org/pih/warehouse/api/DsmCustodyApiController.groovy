@@ -325,6 +325,8 @@ class DsmCustodyApiController extends BaseApiController {
                 destinationTransferId: transfer.destinationTransferId,
                 provenAmount         : transfer.provenAmount,
                 provenPosition       : transfer.provenPosition,
+                carrier              : transfer.kind == DsmCustodyTransfer.KIND_SHIPMENT
+                        ? DsmCarriage.findByKindAndMemo(DsmCarriage.KIND_DISPATCHED, transfer.memo)?.walletDeviceId?.take(8) : null,
         ]
     }
 }

@@ -35,11 +35,11 @@ operational application. Synchronizing OpenBoxes is never what settles anything.
 | Shipment moves units on DSM; hospital's account holds them before its books do | Built; *measured* |
 | Receipt refused above what DSM moved | Built; *measured*, surfaced as HTTP 500 |
 | Custody proof of a partner's holdings, no access to its systems | Built; *measured* |
-| Ownership separate from custody; carriers | **Not built.** A balance is both |
+| Ownership separate from custody; carriers | Built online, *not yet measured live*: each organization has a custody token made in its owner's wallet (one unit, one unit of goods in someone's hands). Handing a sent shipment to a carrier pays the shipment's units of it to the carrier's wallet; at the door the carrier's wallet pays them to the receiving account on a request shown on their phone, and the receiver takes the shipment in only once its own account holds them. The product units still move account to account at the send, so ownership is the account balance and custody is the carrier's; the shipment vault of section 4 is not built |
 | Books compared with DSM each minute, findings signed and append-only, correction from DSM by the owner | Built; *measured* (section 2). A finding DSM cannot sign is not saved, and the next check finds it again; read only, not run live |
 | Direct edits to stock transactions or the availability table, when they change a total | Detected; *measured* |
 | Commitments of individual database records; edits that leave totals unchanged or sit behind a count | **Not built** |
-| Offline handoffs through OpenBoxes | **Not built** |
+| Offline handoffs through OpenBoxes | **Not built.** The online hand-over above is the same two payments; moving the carrier's leg offline over BLE with the anchor appliances is the next phase, and an organization-issued token over offline-bearer is still untested |
 | Signed discrepancy reports | **Not built** |
 
 The owner's wallet stood in as the registry, and the hospital's account stood in as a person's wallet, because
@@ -141,6 +141,11 @@ The custody-without-ownership design conflicts with offline as DSM stands, since
    indistinguishable offline, as the spec states.
 2. **Offline signed statements.** Works on plain phones, but needs a new DSM capability and has no double-spend protection.
 3. **Online only**, with offline as a later phase.
+
+Built so far (2026-11-04): option 1's token and both of its payments, online, with one custody token per organization
+rather than per shipment (`DsmCustodyToken`, `DsmCarriage`, `DsmCarriageService`): the shipment memo ties the units to the
+shipment, the receiving organization roots its partner's token and takes a shipment in only once a wallet has handed its
+units over. A carrier's wallet adopts the token first, since DSM credits no token a device has not adopted.
 
 ### Authorization: enforced at the operation
 

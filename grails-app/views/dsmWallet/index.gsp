@@ -91,6 +91,24 @@
         <table id="tokens"></table>
     </div>
 
+    <div class="card" id="custody-card">
+        <h2>Custody on the way</h2>
+        <div class="hint">One custody unit is one unit of goods in someone's hands. The organization's account pays them to the carrier who takes a shipment, and the carrier's wallet pays them to the receiving organization at the door. Ownership never moves with them.</div>
+        <div id="custody-own"></div>
+        <div class="row" id="custody-add-own">
+            <input id="custody-anchor" placeholder="The custody token's anchor, made in a wallet here" size="44"/>
+            <select id="custody-creator"></select>
+            <button id="custody-add">Use as our custody token</button>
+        </div>
+        <div class="row">
+            <select id="custody-connection"></select>
+            <input id="custody-partner-anchor" placeholder="A partner's custody token anchor" size="44"/>
+            <button class="plain" id="custody-add-partner">Their carriers hand over here</button>
+        </div>
+        <table id="custody-partners"></table>
+        <table id="carriages"></table>
+    </div>
+
     <div class="card">
         <h2>Admit stock</h2>
         <div class="hint">Stock enters custody only after the registry approves it on its own phone. Name the document that says the goods exist.</div>
@@ -151,8 +169,28 @@
             el.innerHTML = rows.map(function (r) { return '<option value="' + esc(r.id) + '">' + esc(label(r)) + '</option>'; }).join('');
             if (kept) el.value = kept;
         }
+        var wallets = [];
+        function showCustody(c) {
+            var own = document.getElementById('custody-own');
+            if (c.own) {
+                own.innerHTML = '<div><b>' + esc(c.own.ticker) + '</b>, made by ' + esc(c.own.creator) + '. The account can hand out <b>' + esc(c.own.spare) + '</b> units. <input size="5" id="custody-units" value="500"/> <button class="plain" id="custody-request">Ask ' + esc(c.own.creator) + ' for more</button></div>';
+                document.getElementById('custody-add-own').style.display = 'none';
+                document.getElementById('custody-request').onclick = function () {
+                    call('requestCustodyUnits', { quantity: val('custody-units') }).then(function () { say('Asked. It waits on their phone under Apps, Waiting.'); }).catch(fail);
+                };
+            } else {
+                own.innerHTML = '<div class="hint">No custody token yet. Make one in the owner\'s wallet (Tokens, Create token, 0 decimals, a large supply) and paste its anchor here.</div>';
+                document.getElementById('custody-add-own').style.display = '';
+            }
+            options('custody-creator', wallets, function (r) { return r.label; });
+            options('custody-connection', c.connections, function (r) { return r.name; });
+            document.getElementById('custody-partners').innerHTML = c.partners.length ? '<tr><th>Partner</th><th>Their custody token</th></tr>' + c.partners.map(function (p) { return '<tr><td>' + esc(p.peer) + '</td><td>' + esc(p.ticker) + ' <code>' + esc(p.anchor.slice(0, 10)) + '</code></td></tr>'; }).join('') : '';
+        }
         function refresh() {
             return call('state').then(function (s) {
+                wallets = s.wallets || [];
+                showCustody(s.custody);
+                document.getElementById('carriages').innerHTML = s.carriages.length ? '<tr><th>When</th><th>What</th><th>Shipment</th><th>Units</th><th>Wallet</th></tr>' + s.carriages.map(function (c) { return '<tr><td>' + esc(c.at) + '</td><td>' + esc(c.kind === 'DISPATCHED' ? 'Handed to a carrier' : 'Handed over at the door') + '</td><td>' + esc(c.memo) + '</td><td>' + esc(c.units) + ' ' + esc(c.ticker) + '</td><td>' + esc(c.wallet) + '</td></tr>'; }).join('') : '';
                 var account = document.getElementById('dsm-account');
                 if (s.account) {
                     account.innerHTML = '<h2>This organization\'s DSM account</h2><div class="hint">' + esc(s.account.location) + ', device <code>' + esc(s.account.deviceId) + '</code></div><button class="plain" id="fees">Get network fees</button>';
@@ -251,15 +289,25 @@
                 }).join('');
             }).catch(fail);
             apiCall('dsm/transfers').then(function (rows) {
-                document.getElementById('transfers').innerHTML = '<tr><th>What</th><th>Product</th><th>Units</th><th>Document</th><th>Proven</th><th></th></tr>' + rows.map(function (t) {
-                    return '<tr><td>' + esc(t.kind) + '</td><td>' + esc(t.productCode) + '</td><td>' + esc(t.quantity) + '</td><td>' + esc(t.memo) + '</td><td>' + esc(t.provenAmount) + '</td><td>' + (t.kind === 'SHIPMENT' ? '<button class="plain" data-prove="' + esc(t.id) + '">Verify partner</button>' : '') + '</td></tr>';
+                var seen = {};
+                document.getElementById('transfers').innerHTML = '<tr><th>What</th><th>Product</th><th>Units</th><th>Document</th><th>Carrier</th><th>Proven</th><th></th></tr>' + rows.map(function (t) {
+                    var carrier = '';
+                    if (t.kind === 'SHIPMENT') {
+                        if (t.carrier) carrier = 'With ' + esc(t.carrier);
+                        else if (!seen[t.memo]) carrier = '<select id="carrier-' + esc(t.memo) + '">' + wallets.map(function (w) { return '<option value="' + esc(w.id) + '">' + esc(w.label) + '</option>'; }).join('') + '</select> <button class="plain" data-dispatch="' + esc(t.memo) + '">Hand to carrier</button>';
+                        seen[t.memo] = true;
+                    }
+                    return '<tr><td>' + esc(t.kind) + '</td><td>' + esc(t.productCode) + '</td><td>' + esc(t.quantity) + '</td><td>' + esc(t.memo) + '</td><td>' + carrier + '</td><td>' + esc(t.provenAmount) + '</td><td>' + (t.kind === 'SHIPMENT' ? '<button class="plain" data-prove="' + esc(t.id) + '">Verify partner</button>' : '') + '</td></tr>';
                 }).join('');
             }).catch(fail);
         }
         function inbound() {
             return apiCall('dsm/inbound').then(function (rows) {
-                document.getElementById('inbound').innerHTML = '<tr><th>From</th><th>Their document</th><th>Lines</th><th></th></tr>' + rows.map(function (d) {
-                    return '<tr><td>' + esc(d.originName) + '</td><td>' + esc(d.memo) + '</td><td>' + esc(d.lines.map(function (l) { return l.quantity + ' ' + l.productCode; }).join(', ')) + '</td><td><button data-peer="' + esc(d.peerDeviceId) + '" data-memo="' + esc(d.memo) + '">Take in</button></td></tr>';
+                document.getElementById('inbound').innerHTML = '<tr><th>From</th><th>Their document</th><th>Lines</th><th>At the door</th><th></th></tr>' + rows.map(function (d) {
+                    var door = 'No carrier: taken in on sight';
+                    if (d.carriage.required && d.carriage.arrived) door = 'Handed over by ' + esc(d.carriage.by) + ': ' + esc(d.carriage.handedOver) + ' of ' + esc(d.units);
+                    else if (d.carriage.required) door = '<span class="bad">On its way: ' + esc(d.carriage.handedOver) + ' of ' + esc(d.units) + ' units handed over</span><br/><select id="handover-' + esc(d.memo) + '">' + wallets.map(function (w) { return '<option value="' + esc(w.id) + '">' + esc(w.label) + '</option>'; }).join('') + '</select> <button class="plain" data-handover="' + esc(d.memo) + '" data-peer="' + esc(d.peerDeviceId) + '" data-units="' + esc(d.units) + '">Ask the carrier to hand over</button>';
+                    return '<tr><td>' + esc(d.originName) + '</td><td>' + esc(d.memo) + '</td><td>' + esc(d.lines.map(function (l) { return l.quantity + ' ' + l.productCode; }).join(', ')) + '</td><td>' + door + '</td><td><button data-take="' + esc(d.peerDeviceId) + '" data-memo="' + esc(d.memo) + '">Take in</button></td></tr>';
                 }).join('');
             }).catch(fail);
         }
@@ -270,12 +318,24 @@
                 say('Asking the partner\'s account to prove what it holds.');
                 apiCall('dsm/transfers/' + prove + '/proof', {}).then(function (t) { say('Proven: they hold ' + t.provenAmount + ' units.'); business(); }).catch(fail);
             }
-            var memo = e.target.getAttribute('data-memo');
-            if (memo) {
-                apiCall('dsm/inbound', { peerDeviceId: e.target.getAttribute('data-peer'), memo: memo }).then(function (s) {
+            var take = e.target.getAttribute('data-take');
+            if (take) {
+                apiCall('dsm/inbound', { peerDeviceId: take, memo: e.target.getAttribute('data-memo') }).then(function (s) {
                     say('Taken in as shipment ' + s.shipmentNumber + '.');
                     window.location = '${request.contextPath}/partialReceiving/create/' + s.shipmentId;
                 }).catch(fail);
+            }
+            var dispatch = e.target.getAttribute('data-dispatch');
+            if (dispatch) {
+                say('Handing the shipment to the carrier: the account pays them its custody units.');
+                call('dispatch', { memo: dispatch, walletId: val('carrier-' + dispatch) }).then(function (c) {
+                    say('Handed over: ' + c.units + ' ' + c.ticker + ' are in ' + c.wallet + '\'s wallet. They hold the goods now.'); business(); refresh();
+                }).catch(fail);
+            }
+            var handover = e.target.getAttribute('data-handover');
+            if (handover) {
+                call('askHandover', { memo: handover, peerDeviceId: e.target.getAttribute('data-peer'), units: e.target.getAttribute('data-units'), walletId: val('handover-' + handover) })
+                    .then(function () { say('Asked. The carrier approves it on their phone under Apps, Waiting; then check again.'); }).catch(fail);
             }
         });
         document.getElementById('partner-offer').onclick = function () {
@@ -327,6 +387,14 @@
         reconcile();
         business();
         setInterval(function () { refresh(); business(); }, 15000);
+        document.getElementById('custody-add').onclick = function () {
+            call('addCustodyToken', { policyAnchor: val('custody-anchor'), creatorId: val('custody-creator') })
+                .then(function (t) { say('Our custody token is ' + t.ticker + '.'); refresh(); }).catch(fail);
+        };
+        document.getElementById('custody-add-partner').onclick = function () {
+            call('addCustodyToken', { policyAnchor: val('custody-partner-anchor'), connectionId: val('custody-connection') })
+                .then(function (t) { say('Their carriers hand over ' + t.ticker + ' here.'); refresh(); }).catch(fail);
+        };
         document.getElementById('add-level').onclick = function () {
             call('addLevel', { name: val('level-name'), roleType: val('level-role'), policyAnchor: val('level-anchor').trim(), creatorId: val('level-creator') })
                 .then(function () { say('Level added.'); return refresh(); }).catch(function (x) { say(x.message, true); });
