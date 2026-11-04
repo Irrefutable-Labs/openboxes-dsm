@@ -152,8 +152,15 @@ class DsmWalletSignInController {
     }
 
     /** A path within this application, or nothing. */
+    /** Pages only: a poll or an API read that was refused while signed out is never where a person was going. */
+    private static final List<String> NOT_PAGES = ["/api/", "/dsmWallet/timeline", "/dsmWallet/state", "/dsmWallet/reconcile",
+                                                   "/dsmPhone/state", "/dsmWalletSignIn", "/errors/", "/static/"]
+
     private static String sensible(String target) {
-        return target && target.startsWith("/") && !target.startsWith("//") && target != "/" ? target : null
+        if (!target || !target.startsWith("/") || target.startsWith("//") || target == "/") {
+            return null
+        }
+        return NOT_PAGES.any { String prefix -> target.startsWith(prefix) } ? null : target
     }
 
     /** What has become of this browser's code; signs the browser in once a wallet with a standing seat has answered. */

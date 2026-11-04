@@ -45,7 +45,7 @@ class DsmTimelineInterceptor {
             "dsmWalletSignIn.status", "dsmWalletSignIn.answer", "dsmWalletSignIn.qr", "dsmPhone.state",
             "errors.handleUnauthorized", "errors.handleException",
             // the browser application's own plumbing, not anything a person did
-            "localizationApi.list", "api.getMenuConfig", "api.getAppContext", "api.chooseLocation",
+            "localizationApi.list", "api.getMenuConfig", "api.getAppContext", "api.chooseLocation", "helpscoutApi.configuration",
     ] as Set
 
     DsmTimelineInterceptor() {
