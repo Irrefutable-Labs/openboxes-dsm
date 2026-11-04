@@ -10,6 +10,7 @@ import org.pih.warehouse.dsm.Base32Crockford
 import org.pih.warehouse.dsm.DsmAccountService
 import org.pih.warehouse.dsm.DsmAdmission
 import org.pih.warehouse.dsm.DsmAdmissionService
+import org.pih.warehouse.dsm.DsmCarriage
 import org.pih.warehouse.dsm.DsmConnection
 import org.pih.warehouse.dsm.DsmCustodyException
 import org.pih.warehouse.dsm.DsmCustodyService
