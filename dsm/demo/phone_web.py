@@ -57,7 +57,14 @@ def open_url(serial, url):
     close(serial)
     wcdp.adb(serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP")
     wcdp.adb(serial, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url, "com.android.chrome")
-    time.sleep(5)
+    # Chrome may be cold or behind the wallet: the tab is waited for, not assumed.
+    for _ in range(12):
+        time.sleep(2)
+        if any(SITE in page.get("url", "") for page in tabs(serial)):
+            time.sleep(3)
+            return
+    front(serial)
+    time.sleep(4)
 
 
 def front(serial):

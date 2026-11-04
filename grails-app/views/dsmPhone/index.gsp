@@ -232,9 +232,10 @@
             if (busy || (document.activeElement && document.activeElement.tagName === 'INPUT')) { timer = setTimeout(refresh, 3000); return; }
             return call('state').then(render).catch(function (x) { toast(x.message, 'bad'); }).then(function () { timer = setTimeout(refresh, 6000); });
         }
-        function act(promise, done) {
+        function act(promise, done, button) {
             busy = true;
-            return promise.then(function (r) { busy = false; toast(done(r), 'ok'); return refresh(); }).catch(function (x) { busy = false; toast(x.message, 'bad'); return refresh(); });
+            return promise.then(function (r) { busy = false; toast(done(r), 'ok'); return refresh(); })
+                .catch(function (x) { busy = false; toast(x.message, 'bad'); if (button) button.disabled = false; return refresh(); });
         }
         function picked(button) { var id = button.getAttribute('data-pick'); return id ? document.getElementById(id).value : ''; }
         document.addEventListener('click', function (e) {
@@ -290,17 +291,19 @@
                 e.preventDefault();
                 var fields = {};
                 Array.prototype.forEach.call(form.querySelectorAll('input, select'), function (i) { if (i.name) fields[i.name] = i.value; });
-                form.querySelector('button[type=submit]').disabled = true;
+                var shipButton = form.querySelector('button[type=submit]');
+                shipButton.disabled = true;
                 toast('Shipping. DSM moves the custody now.');
-                return act(call('send', fields), function (r) { delete open.send; return 'Shipment ' + r.number + ' sent: ' + r.units + ' units to ' + r.to + '. Hand it to a carrier.'; });
+                return act(call('send', fields), function (r) { delete open.send; return 'Shipment ' + r.number + ' sent: ' + r.units + ' units to ' + r.to + '. Hand it to a carrier.'; }, shipButton);
             }
             if (!id) return;
             e.preventDefault();
             var fields = { shipmentId: id };
             Array.prototype.forEach.call(form.querySelectorAll('input'), function (i) { fields[i.name] = i.value; });
-            form.querySelector('button[type=submit]').disabled = true;
+            var receiveButton = form.querySelector('button[type=submit]');
+            receiveButton.disabled = true;
             toast('Receiving.');
-            act(call('receive', fields), function (r) { delete open[id]; return 'Received shipment ' + r.number + '. It is in stock here now.'; });
+            act(call('receive', fields), function (r) { delete open[id]; return 'Received shipment ' + r.number + '. It is in stock here now.'; }, receiveButton);
         });
         refresh();
     })();
