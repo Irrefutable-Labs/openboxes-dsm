@@ -65,7 +65,13 @@ class DsmTimelineInterceptor {
         if (response.status >= 400) {
             label += " (refused: ${response.status})"
         }
-        DsmTimeline.record(label, session.user?.name?.toString() ?: "", "${request.method} ${request.forwardURI - request.contextPath}".toString())
+        String who = ""
+        try {
+            who = session.user?.name?.toString() ?: ""
+        } catch (IllegalStateException signedOut) {
+            // signing out invalidates the session before this runs
+        }
+        DsmTimeline.record(label, who, "${request.method} ${request.forwardURI - request.contextPath}".toString())
         return true
     }
 
