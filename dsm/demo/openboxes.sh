@@ -13,6 +13,10 @@ case "$ORG" in
 esac
 : "${JAVA_HOME:?JAVA_HOME must name a JDK 8}"
 WAR="$HERE/../../build/libs/openboxes.war"
+# The demo's dashboard layout, read by OpenBoxes from the home directory; an existing file of yours is left alone.
+if [ ! -e "$HOME/.grails/openboxes-config.groovy" ]; then
+    mkdir -p "$HOME/.grails" && cp "$HERE/dashboard-config.groovy" "$HOME/.grails/openboxes-config.groovy"
+fi
 TZNAME="$(readlink /etc/localtime | sed 's#.*/zoneinfo/##')"
 mkdir -p "$ROOT/app"
 cd "$ROOT/app"

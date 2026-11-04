@@ -39,6 +39,19 @@
         var url = '${createLink(controller: 'dsmWallet', action: 'timeline')}';
         var panel = document.getElementById('dsm-ov'), list = document.getElementById('dsm-ov-list');
         var after = 0, web2After = 0, timer = null, last = {};
+        // The same request repeated (a page's tiles loading, say) is one line with a count, so every call is accounted for
+        // without burying the ones that matter.
+        var lastWeb2 = null;
+        function addWeb2(e) {
+            var key = e.what + '|' + (e.who || '');
+            if (lastWeb2 && lastWeb2.key === key && lastWeb2.el && lastWeb2.el.parentNode) {
+                lastWeb2.n += 1;
+                lastWeb2.el.querySelector('.meta').textContent = [e.who, e.request, '\u00d7' + lastWeb2.n].filter(Boolean).join(' \u00b7 ');
+                return;
+            }
+            add('<span class="dsm-tag web2">WEB2</span>' + esc(e.what) + '<div class="meta">' + esc([e.who, e.request].filter(Boolean).join(' \u00b7 ')) + '</div>');
+            lastWeb2 = { key: key, n: 1, el: list.firstElementChild };
+        }
         function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : v; return d.innerHTML; }
         function usd(v) { return Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' }); }
         function add(html) { var d = document.createElement('div'); d.className = 'dsm-ev dsm-flash'; d.innerHTML = html; list.insertBefore(d, list.firstChild); list.scrollTop = 0; }
@@ -79,7 +92,7 @@
                     if (!j || !j.data) return;
                     var s = j.data;
                     after = s.next;
-                    s.web2.forEach(function (e) { web2After = Math.max(web2After, e.seq); add('<span class="dsm-tag web2">WEB2</span>' + esc(e.what) + ((e.who || e.request) ? '<div class="meta">' + esc([e.who, e.request].filter(Boolean).join(' · ')) + '</div>' : '')); });
+                    s.web2.forEach(function (e) { web2After = Math.max(web2After, e.seq); addWeb2(e); });
                     s.dsm.forEach(function (e) {
                         var words = plain(e);
                         if (words === null) return;

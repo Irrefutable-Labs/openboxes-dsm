@@ -32,6 +32,7 @@ class DsmTimelineInterceptor {
             "dsmPhone.handover"             : "Hand-over request recorded in this organization's database",
             "dsmPhone.takeIn"               : "Inbound shipment created in this organization's database",
             "dsmPhone.receive"              : "Receipt recorded in this organization's database",
+            "dashboardApi"                  : "Dashboard tiles read from this organization's database",
             "stockMovementApi"              : "Stock movement updated in this organization's database",
             "partialReceivingApi"           : "Receipt recorded in this organization's database",
             "recordStockApi"                : "Stock recorded in this organization's database",
@@ -43,6 +44,8 @@ class DsmTimelineInterceptor {
             "dsmWallet.state", "dsmWallet.timeline", "dsmWallet.reconcile", "dsmWallet.answered", "dsmWallet.offer",
             "dsmWalletSignIn.status", "dsmWalletSignIn.answer", "dsmWalletSignIn.qr", "dsmPhone.state",
             "errors.handleUnauthorized", "errors.handleException",
+            // the browser application's own plumbing, not anything a person did
+            "localizationApi.list", "api.getMenuConfig", "api.getAppContext", "api.chooseLocation",
     ] as Set
 
     DsmTimelineInterceptor() {
