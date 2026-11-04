@@ -206,14 +206,23 @@
             }).join('');
         }
         function badge(id, n) { var b = document.getElementById('b-' + id); b.hidden = !n; b.textContent = n; }
+        // A choice made in a picker, or a section a person opened, survives the screen's refresh.
+        function keep(id, draw) {
+            var box = document.getElementById(id), chosen = {}, opened = {};
+            Array.prototype.forEach.call(box.querySelectorAll('select'), function (sel) { chosen[sel.id] = sel.value; });
+            Array.prototype.forEach.call(box.querySelectorAll('details'), function (d, i) { opened[i] = d.open; });
+            box.innerHTML = draw();
+            Array.prototype.forEach.call(box.querySelectorAll('select'), function (sel) { if (chosen[sel.id] !== undefined) sel.value = chosen[sel.id]; });
+            Array.prototype.forEach.call(box.querySelectorAll('details'), function (d, i) { if (opened[i]) d.open = true; });
+        }
         function render(s) {
             state = s;
             document.getElementById('where').textContent = s.location || 'OpenBoxes';
             document.getElementById('who').textContent = (s.user || '') + (s.me ? ' · wallet ' + s.me.deviceId : ' · no wallet on this session');
-            document.getElementById('arriving').innerHTML = arriving(s.arriving);
+            keep('arriving', function () { return arriving(s.arriving); });
             // a form being filled in is left alone until it is sent or closed
             if (!Object.keys(open).some(function (k) { return k !== 'send'; })) document.getElementById('receiving').innerHTML = receiving(s.receiving);
-            if (!open.send) document.getElementById('leaving').innerHTML = leaving(s.leaving);
+            if (!open.send) keep('leaving', function () { return leaving(s.leaving); });
             document.getElementById('carrying').innerHTML = carrying(s.carrying);
             var waiting = s.leaving.filter(function (d) { return !d.carrier; }).length;
             badge('door', s.arriving.length); badge('receive', s.receiving.length); badge('send', waiting); badge('carry', s.carrying.length);

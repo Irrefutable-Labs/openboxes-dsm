@@ -71,9 +71,17 @@ def tap(phone, selector):
 
 
 def pick(phone, selector, words):
-    """Choose the option naming `words` in the select(s) `selector` on the door screen."""
-    on_phone(phone, "Array.prototype.forEach.call(document.querySelectorAll(%s), function (s) { var o = Array.prototype.filter.call(s.options, function (o) { return o.text.indexOf(%s) >= 0; })[0]; if (o) s.value = o.value; }); 1"
-                    % (json.dumps(selector), json.dumps(words)))
+    """Choose the option naming `words` in the select(s) `selector` on the door screen, and say what was chosen."""
+    return on_phone(phone, "Array.prototype.map.call(document.querySelectorAll(%s), function (s) { var o = Array.prototype.filter.call(s.options, function (o) { return o.text.indexOf(%s) >= 0; })[0]; if (o) s.value = o.value; return s.options[s.selectedIndex].text; }).join('|')"
+                           % (json.dumps(selector), json.dumps(words)))
+
+
+def pick_and_tap(phone, selector, words, button):
+    """Choose, then tap, in one step on the phone: nothing redraws the screen between the two."""
+    chosen = on_phone(phone, "var chosen = Array.prototype.map.call(document.querySelectorAll(%s), function (s) { var o = Array.prototype.filter.call(s.options, function (o) { return o.text.indexOf(%s) >= 0; })[0]; if (o) s.value = o.value; return s.options[s.selectedIndex].text; }).join('|');"
+                             " if (chosen.indexOf(%s) < 0) throw new Error('not offered: ' + chosen); document.querySelector(%s).click(); chosen"
+                             % (json.dumps(selector), json.dumps(words), json.dumps(words), json.dumps(button)))
+    print("  chose:", chosen)
 
 
 def wallet_history(phone):
@@ -160,10 +168,12 @@ def do(n):
         door_screen(priya, 8081, "priya.nair")
         tap(priya, "[data-go=send]")
         time.sleep(5)
-        pick(priya, "select[id^=dispatch-]", "Dev Okafor")
+        print("  picker shows:", pick(priya, "select[id^=dispatch-]", "Dev Okafor"))
         time.sleep(4)
-        tap(priya, "[data-dispatch]")
+        pick_and_tap(priya, "select[id^=dispatch-]", "Dev Okafor", "[data-dispatch]")
         wait(90, lambda: one("a", "select count(*) from dsm_carriage where kind='DISPATCHED'") == "1", "handed to the driver")
+        need("Dev Okafor" in one("a", "select coalesce(w.name, '') from dsm_carriage c join dsm_wallet w on w.device_id = c.wallet_device_id where c.kind='DISPATCHED'"),
+             "the units went to the driver's wallet")
         time.sleep(5)
         show_phone("carrier")
         wallet_history(carrier)
@@ -176,9 +186,9 @@ def do(n):
         time.sleep(7)
         on_phone(amara, "var d = document.querySelector('#arriving details'); if (d) d.open = true; 1")
         time.sleep(3)
-        pick(amara, "select[id^=carrier-]", "Dev Okafor")
+        print("  picker shows:", pick(amara, "select[id^=carrier-]", "Dev Okafor"))
         time.sleep(3)
-        tap(amara, "[data-handover][data-pick]")
+        pick_and_tap(amara, "select[id^=carrier-]", "Dev Okafor", "[data-handover][data-pick]")
         time.sleep(4)
         show_phone("carrier")
         carrier.approve("Pay 120")
