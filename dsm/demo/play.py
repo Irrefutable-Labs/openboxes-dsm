@@ -12,6 +12,7 @@ storage nodes, never a screen.
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -23,6 +24,9 @@ setup = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(setup)
 Phone, sql, say = setup.Phone, setup.sql, setup.say
 marcus, priya = Phone(setup.NORTHGATE), Phone(setup.LAKESIDE)
+spec = importlib.util.spec_from_file_location("phone_web", HERE + "/phone_web.py")
+web = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(web)
 
 
 def scene(n, focus=""):
@@ -51,6 +55,29 @@ def wait(seconds, test, what):
             return
         time.sleep(3)
     raise SystemExit("NOT DONE in %d s: %s" % (seconds, what))
+
+
+def on_phone(phone, script):
+    return web.evaluate(phone.serial, script)
+
+
+def tap(phone, selector):
+    on_phone(phone, "document.querySelector(%s).click(); 1" % json.dumps(selector))
+
+
+def door_screen(phone, port, username):
+    """Open an organization's door screen in Chrome on the phone, signing in with the wallet on the same phone."""
+    web.open_url(phone.serial, "http://%s:%d/openboxes/dsmPhone" % (web.host(), port))
+    if on_phone(phone, "location.pathname").endswith("/dsmPhone"):
+        return
+    asked = on_phone(phone, "document.getElementById('username').value=%s; document.getElementById('ask').dispatchEvent(new Event('submit', {cancelable: true}));"
+                            " new Promise(function (r) { setTimeout(function () { r(document.getElementById('asked').textContent); }, 3000); })" % json.dumps(username))
+    code = re.search(r"code ([0-9A-Z]{4})", asked).group(1)
+    time.sleep(3)
+    phone.approve("Browser code " + code)
+    web.front(phone.serial)
+    wait(60, lambda: on_phone(phone, "location.pathname").endswith("/dsmPhone"), "the phone is on the door screen")
+    time.sleep(2)
 
 
 CHECKS = {
@@ -94,20 +121,47 @@ def do(n):
         priya.approve("as priya.nair")
         wait(60, lambda: one("a", "select count(*) from dsm_authority_record where kind='SIGN_IN' and wallet like 'P58T%'") >= "1", "Priya signed in")
     elif n == 7:
-        # The browser pressed "Hand to carrier"; her phone shows what it now holds.
-        wait(60, lambda: one("a", "select count(*) from dsm_carriage where kind='DISPATCHED'") == "1", "handed to Priya")
-        priya.apps()
+        # On her phone: Northgate's door screen, the Send tab, Hand to carrier (herself), then what she carries.
+        scene(7)
+        door_screen(priya, 8081, "priya.nair")
+        tap(priya, "[data-go=send]")
+        time.sleep(6)
+        tap(priya, "[data-dispatch]")
+        wait(90, lambda: one("a", "select count(*) from dsm_carriage where kind='DISPATCHED'") == "1", "handed to Priya")
+        time.sleep(6)
+        tap(priya, "[data-go=carry]")
+        time.sleep(5)
     elif n == 8:
-        if one("b", "select count(*) from dsm_authority_record where kind='SIGN_IN'") == "0":
-            priya.show("Sign in to Lakeside")
-            time.sleep(6)
-            priya.approve("Sign in to Lakeside")
-            wait(60, lambda: one("b", "select count(*) from dsm_authority_record where kind='SIGN_IN'") >= "1", "Priya signed in at Lakeside")
-        else:
-            # The browser asked her wallet to hand over; she approves the payment on her phone.
-            priya.show("Pay 120")
-            time.sleep(6)
-            priya.approve("Pay 120")
+        # On her phone: Lakeside's door screen says 0 of 120 handed over; she hands over, approves the payment in her wallet, takes in.
+        scene(8)
+        door_screen(priya, 8082, "priya.nair")
+        time.sleep(7)
+        tap(priya, "[data-handover][data-mine]")
+        time.sleep(4)
+        priya.approve("Pay 120")
+        web.front(priya.serial)
+        wait(120, lambda: "Take in" in on_phone(priya, "document.getElementById('arriving').innerText"), "handed over on the door screen")
+        time.sleep(6)
+        tap(priya, "[data-take]")
+        wait(90, lambda: one("b", "select count(*) from shipment") == "1", "taken in")
+        time.sleep(4)
+    elif n == 9:
+        # On her phone: count 130, refused; count 120, received.
+        scene(9)
+        tap(priya, "[data-go=receive]")
+        time.sleep(4)
+        tap(priya, "[data-count]")
+        time.sleep(4)
+        on_phone(priya, "document.querySelector('form[data-receive] input').value = '130'; 1")
+        time.sleep(3)
+        tap(priya, "form[data-receive] button[type=submit]")
+        wait(60, lambda: "DSM moved 120" in on_phone(priya, "document.getElementById('toast').textContent"), "130 refused on the phone")
+        time.sleep(8)
+        on_phone(priya, "document.querySelector('form[data-receive] input').value = '120'; 1")
+        time.sleep(3)
+        tap(priya, "form[data-receive] button[type=submit]")
+        wait(90, lambda: one("b", "select quantity_received from dsm_custody_transfer where kind='INBOUND'") == "120", "120 received")
+        time.sleep(4)
     elif n == 10:
         cell = one("a", "select verdict_cell from dsm_seat where number=1")
         marcus.front()

@@ -8,16 +8,29 @@
     .dsm-arrow { position: fixed; z-index: 100002; width: 0; height: 0; border-left: 11px solid transparent; border-right: 11px solid transparent; border-top: 16px solid #f0b429; pointer-events: none; animation: dsm-bob .9s ease-in-out infinite; }
     @keyframes dsm-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
     @keyframes dsm-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
-    #dsm-story { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100003; display: none; align-items: center; gap: 18px; padding: 10px 18px; background: #10141c; color: #eef1f6; font: 15px/1.35 -apple-system, "Segoe UI", sans-serif; border-top: 3px solid #b7791f; }
-    #dsm-story .n { color: #f0b429; font-weight: 700; white-space: nowrap; font-size: 14px; }
-    #dsm-story .t { font-size: 19px; font-weight: 700; margin-bottom: 3px; }
-    #dsm-story .tag { display: inline-block; padding: 0 7px; border-radius: 4px; font-weight: 700; font-size: 11px; margin-right: 6px; color: #fff; }
+    #dsm-story { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100003; display: none; align-items: center; gap: 22px; padding: 12px 22px; background: #10141c; color: #eef1f6; font: 19px/1.4 -apple-system, "Segoe UI", sans-serif; border-top: 3px solid #b7791f; }
+    #dsm-story .n { color: #f0b429; font-weight: 700; white-space: nowrap; font-size: 17px; }
+    #dsm-story .t { font-size: 25px; font-weight: 700; margin-bottom: 6px; }
+    #dsm-story .tag { display: inline-block; padding: 1px 8px; border-radius: 4px; font-weight: 700; font-size: 13px; margin-right: 7px; color: #fff; vertical-align: 2px; }
+    /* A scene on the phone in a wide window: the phone fills the height on the left, the story stands beside it. */
+    body.dsm-wide-phone #dsm-story { left: auto; right: 0; top: 0; bottom: 0; flex-direction: column; align-items: flex-start; justify-content: center; gap: 14px; border-top: 0; padding: 28px 34px; font-size: 22px; line-height: 1.45; }
+    body.dsm-wide-phone #dsm-story .t { font-size: 32px; margin-bottom: 16px; }
+    body.dsm-wide-phone #dsm-story .n { font-size: 20px; }
+    body.dsm-wide-phone #dsm-story .tag { font-size: 15px; }
+    body.dsm-wide-phone #dsm-story > div > div { margin-bottom: 14px; }
     #dsm-story .web2 { background: #2f6fc4; } #dsm-story .dsm { background: #b7791f; }
     #dsm-phone { position: fixed; left: 14px; bottom: 104px; box-sizing: border-box; pointer-events: none; z-index: 100002; display: none; background: #10141c; border: 3px solid #b7791f; border-radius: 16px; padding: 6px; color: #eef1f6; font: 12px -apple-system, "Segoe UI", sans-serif; text-align: center; }
     #dsm-phone .crop { aspect-ratio: 330 / 470; overflow: hidden; border-radius: 10px; background: #000; }
+    #dsm-phone div { font-size: 15px; }
     /* Other pages style their images: the phone keeps its own shape everywhere. */
     #dsm-phone img { width: 100% !important; height: auto !important; max-width: none !important; max-height: none !important; display: block; margin: -12% 0 0 0 !important; padding: 0 !important; border: 0 !important; }
     #dsm-phone div { padding: 3px 0 5px; font-weight: 700; }
+    /* A scene on the phone: its screen large in the middle, the browser page dimmed behind it, the status and address bars cropped. */
+    #dsm-phone.large { left: 50%; transform: translateX(-50%); top: 8px; bottom: auto; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .55), 0 0 30px rgba(0, 0, 0, .6); }
+    #dsm-phone.large #dsm-phone-who { display: none; }
+    body.dsm-wide-phone #dsm-phone.large { left: 16px; transform: none; }
+    #dsm-phone.large .crop { aspect-ratio: 1080 / 1977; }
+    #dsm-phone.large img { margin-top: -20.6% !important; }
 </style>
 <svg id="dsm-shade" aria-hidden="true"><path id="dsm-shade-path" fill="rgba(0,0,0,0.62)" fill-rule="evenodd"></path></svg>
 <div id="dsm-rings"></div>
@@ -43,6 +56,7 @@
             setFocus(s.focus || []);
             phone = s.phone;
             box.style.display = phone ? 'block' : 'none';
+            box.className = s.stage === 'phone' ? 'large' : '';
             if (phone) set('dsm-phone-who', names[phone]);
         }
         // The spotlight, as the wallet's tutorial draws it: everything shaded but what matters now, with a ring and an arrow.
@@ -129,16 +143,28 @@
         // The phone sits wholly above the bar, whatever the window's size or however many lines the bar takes.
         function fit() {
             var barHeight = bar.style.display === 'none' ? 0 : bar.offsetHeight;
-            var room = window.innerHeight - barHeight - 60;
-            box.style.bottom = (barHeight + 12) + 'px';
-            var width = Math.max(180, Math.min(340, Math.round(room * 330 / 470), Math.round(window.innerWidth * 0.34)));
+            var large = box.className === 'large', W = window.innerWidth, H = window.innerHeight;
+            var wide = large && W > 1100;
+            document.body.classList.toggle('dsm-wide-phone', wide);
+            if (wide) barHeight = 0;
+            var room = H - barHeight - 60;
+            box.style.bottom = large ? 'auto' : (barHeight + 12) + 'px';
+            var width;
+            if (large) {
+                // The phone's picture fills the height above the bar (or the whole height, beside the story).
+                width = Math.round((H - 16 - barHeight - 18) * 1080 / 1977) + 18;
+                width = Math.min(width, wide ? Math.round(W * 0.5) : W - 32);
+            } else {
+                width = Math.max(200, Math.min(460, Math.round(room * 330 / 470), Math.round(W * 0.4)));
+            }
             box.style.width = width + 'px';
+            bar.style.width = wide ? (W - width - 40) + 'px' : '';
             // While a phone is shown, the page keeps clear of it too.
-            document.body.style.paddingLeft = box.style.display !== 'none' && !document.querySelector('main') ? (width + 30) + 'px' : '';
+            document.body.style.paddingLeft = box.style.display !== 'none' && !large && !document.querySelector('main') ? (width + 30) + 'px' : '';
             // On the sign-in page the card stands clear of the phone.
             var card = document.querySelector('main');
             if (card) {
-                var phoneShown = box.style.display !== 'none';
+                var phoneShown = box.style.display !== 'none' && !large;
                 card.style.marginLeft = phoneShown ? (width + 40) + 'px' : 'auto';
                 card.style.marginRight = phoneShown ? '16px' : 'auto';
                 card.style.maxWidth = phoneShown ? 'calc(100vw - ' + (width + 80) + 'px)' : '';

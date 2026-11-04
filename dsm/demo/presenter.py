@@ -34,15 +34,15 @@ SCENES = [
     ("Priya ships 120 boxes to Lakeside: $2,208",
      "OpenBoxes creates the shipment and its paperwork.",
      "Custody moves on DSM before the books change. If DSM refuses, nothing is recorded.", None),
-    ("Priya takes the boxes with her. Custody moves to her phone",
+    ("Priya takes the boxes with her. On her phone, Northgate hands them to her",
      "OpenBoxes has no idea who is carrying what; a paper manifest at best.",
      "Northgate's account pays 120 custody units to her wallet. She holds the goods now, and nothing else of value.", "lakeside"),
-    ("At Lakeside's door, Priya hands custody over from her phone",
+    ("At Lakeside's door, Priya hands custody over from her phone, and takes the boxes in",
      "Lakeside's own OpenBoxes knows nothing yet: its books still say zero, and nothing can be taken in.",
-     "Lakeside's account already holds the 120 boxes, but takes them in only once her wallet hands the custody units over.", "lakeside"),
-    ("Lakeside tries to receive too many, then receives the right amount",
+     "Lakeside's door screen shows 0 of 120 handed over. Her wallet pays the units to Lakeside's account; only then can the boxes be taken in.", "lakeside"),
+    ("Lakeside counts 130, then 120, on the phone",
      "OpenBoxes would normally accept whatever someone types.",
-     "DSM moved 120, so 130 is refused. Receiving 120 brings the books into line.", None),
+     "DSM moved 120, so 130 is refused on the spot. Receiving 120 brings the books into line.", "lakeside"),
     ("Marcus revokes Priya's seat from his phone",
      "Nobody edits a user, resets a password or waits for a nightly job.",
      "He decides it in his wallet. Her very next click is refused, and the seat is back with Northgate.", "northgate"),
@@ -59,6 +59,9 @@ SCENES = [
      "OpenBoxes keeps running the warehouse.",
      "No passwords. Seats that can be counted and revoked. Custody two companies can verify. Books that cannot quietly drift.", None),
 ]
+
+# Scenes that happen on the phone: its screen is shown large, the page behind it dimmed.
+ON_THE_PHONE = {7, 8, 9}
 
 state = {"scene": 0, "focus": []}
 images = {}
@@ -94,7 +97,7 @@ class Handler(BaseHTTPRequestHandler):
     def scene(self):
         n = state["scene"]
         title, web2, dsm, phone = SCENES[n]
-        self.answer(json.dumps({"n": n + 1, "of": len(SCENES), "title": title, "web2": web2, "dsm": dsm, "phone": phone, "focus": state["focus"]}).encode(), "application/json")
+        self.answer(json.dumps({"n": n + 1, "of": len(SCENES), "title": title, "web2": web2, "dsm": dsm, "phone": phone, "stage": "phone" if n + 1 in ON_THE_PHONE else "page", "focus": state["focus"]}).encode(), "application/json")
 
     def do_GET(self):
         if self.path.startswith("/phone/"):
