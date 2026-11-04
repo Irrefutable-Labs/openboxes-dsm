@@ -37,6 +37,9 @@ class RoleInterceptor {
     def static changeControllers = ['createProductFromTemplate']
 
     def static managerActions = [
+        // the DSM screen as a warehouse manager reads it, and the goods they hand to a carrier or take in at the door
+        'dsmWallet'           : ['index', 'state', 'reconcile', 'dispatch', 'askHandover'],
+        'dsmCustodyApi'       : ['accounts', 'tokens', 'connections', 'admissions', 'inbound', 'transfers', 'establishInbound'],
         'inventory'           : ['createOutboundTransfer'],
         'stockMovementItemApi': ['eraseItem']
     ]
@@ -52,10 +55,10 @@ class RoleInterceptor {
         'locationGroup'  : ['create'],
         'locationType'   : ['list'],
         'productSupplier': ['create', 'delete', 'edit'],
-        // the DSM screen, and what it reads and changes: for administrators, with their own wallets
-        'dsmWallet'      : ['index', 'state', 'attachAccount', 'offer', 'answered', 'addLevel', 'requestSeats', 'assignSeat', 'refreshSeat', 'reconcile', 'checkNow', 'correctBooks', 'addCustodyToken', 'requestCustodyUnits', 'dispatch', 'askHandover'],
-        // what the DSM accounts hold: for administrators
-        'dsmCustodyApi'  : ['accounts', 'tokens', 'connections', 'admissions', 'releases', 'releaseDecisions', 'inbound', 'transfers', 'requestAdmission', 'establishInbound', 'proveHoldings']
+        // what the DSM screen changes about the organization itself: for administrators, with their own wallets
+        'dsmWallet'      : ['attachAccount', 'offer', 'answered', 'addLevel', 'requestSeats', 'assignSeat', 'refreshSeat', 'checkNow', 'correctBooks', 'addCustodyToken', 'requestCustodyUnits'],
+        // what moves units into custody or proves a partner's: for administrators
+        'dsmCustodyApi'  : ['releases', 'releaseDecisions', 'requestAdmission', 'proveHoldings']
     ]
 
     def static superuserControllers = []
