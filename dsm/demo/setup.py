@@ -308,6 +308,10 @@ def main():
                                               ("b", "Amara", "Osei", "amara.osei", "amara.osei@lakeside.example")):
         sql(org, "update person p join user u on u.id=p.id set p.first_name='%s', p.last_name='%s', p.email='%s' where u.username='admin'; "
                  "update user set username='%s' where username='admin'" % (first, last, email, username))
+    # The warehouses are named before any wallet connects: a wallet keeps the name it was shown at connect time.
+    sql("a", "update location set name='Northgate Central Warehouse' where id='1'; update location set name='Lakeside District Hospital' where id='2'")
+    sql("b", "update location set name='Lakeside Hospital Pharmacy' where id='1'; update location set name='Northgate Medical Distribution' where id='2'")
+
     say("Marcus claims Northgate on his phone: the first run, no password anywhere")
     digest = north.claim(marcus)
     say("Amara claims Lakeside on her phone")
