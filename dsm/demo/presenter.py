@@ -21,7 +21,7 @@ SCENES = [
      "This is the DSM version of OpenBoxes, the open-source warehouse system used in hospitals and supply chains. Same screens, same daily work: receiving, shipping, counting.",
      "DSM is our deterministic state tracker: immutable, forward-only, with post-quantum cryptographic authority. No intermediary server, no blockchain validators; it runs at the edge, and where there is no internet two phones over Bluetooth will do. Underneath OpenBoxes it decides who may act and who holds which goods. Every figure here is a real entry on its storage nodes.", None),
     ("No passwords. Marcus, Northgate's owner, signs in with his phone",
-     "In the DSM version, password login is switched off as soon as an organization has an owner. Nobody here has a password on file, so there is nothing to phish, leak or reset.",
+     "In the DSM version nobody has a password. The only one that ever exists is a fresh install's setup login, used once to connect the organization to DSM; it is retired the moment the owner claims the organization with their wallet. Nothing to phish, leak or reset.",
      "The login is a signature. Marcus's phone wallet shows him a sentence naming this browser's one-time code; approving it signs that sentence with his key. Only this browser gets in, and the signature cannot be replayed.", "northgate"),
     ("Marcus gives Priya a seat as warehouse manager",
      "Normally access is a role ticked in a user record: any administrator can change it, and nobody can audit it afterwards.",
