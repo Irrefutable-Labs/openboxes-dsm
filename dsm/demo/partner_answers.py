@@ -59,7 +59,7 @@ def router(op, method, body):
     pack = varint(2 << 3) + varint(1) + field(3, body) if body else varint(2 << 3) + varint(1)
     req = urllib.request.Request("http://127.0.0.1:8782/ingress/quiet", data=field(op, field(1, method.encode()) + field(2, pack)),
                                  headers={"Authorization": "Bearer " + token, "Content-Type": "application/x-protobuf"})
-    answer = dict(parse(urllib.request.urlopen(req, timeout=240).read()))
+    answer = dict(parse(urllib.request.urlopen(req, timeout=60).read()))
     if 2 in answer:
         raise SystemExit(method + " refused: " + str(dict(parse(answer[2])).get(2, answer[2]))[:300])
     return dict(parse(dict(parse(answer[1][1:]))[ENV]))

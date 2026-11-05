@@ -232,7 +232,7 @@ def do(n):
         need("Final: revoke" in out, "revoked on Marcus's phone")
     elif n == 11:
         for _ in range(6):
-            subprocess.run([sys.executable, "-I", HERE + "/partner_answers.py"], capture_output=True, text=True, timeout=280)
+            subprocess.run([sys.executable, "-I", HERE + "/partner_answers.py"], capture_output=True, text=True, timeout=120)
             if one("a", "select proven_amount from dsm_custody_transfer where kind='SHIPMENT'") == "120":
                 break
             time.sleep(1)
