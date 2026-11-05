@@ -15,7 +15,7 @@ Before the first scene the screen shows Northgate's sign-in page with the story 
 
 This is OpenBoxes. It's open-source warehouse software, used in hospitals and supply chains in dozens of countries. What you're looking at is the DSM version of it: the same screens, the same work, nothing about how people use it has changed.
 
-DSM is our company's ledger. It runs on independent storage nodes, and it answers two questions no database can answer honestly about itself: who is allowed to act, and who holds what. Today it's underneath OpenBoxes. It can sit underneath any system that keeps books on things of value.
+DSM is our company's ledger: immutable, forward-only, and quantum-resistant. It runs on independent storage nodes, and it answers two questions no database can answer honestly about itself: who is allowed to act, and who holds what. Today it's underneath OpenBoxes. It can sit underneath any system that keeps books on things of value.
 
 Two organizations: Northgate Medical, a distributor, and Lakeside District Hospital. They run separate copies of OpenBoxes, with separate databases. And underneath both of them sits DSM.
 
@@ -181,4 +181,4 @@ Marcus brings the books back to the truth, and the finding stays on the record, 
 
 So: no passwords. Seats that can be counted and revoked. Custody that two companies can verify without trusting each other. And books that cannot quietly drift.
 
-Same OpenBoxes. Same screens. Same people. DSM underneath. And what DSM did for a warehouse today, it does for any system that keeps books on things of value.
+Same OpenBoxes. Same screens. Same people. DSM underneath, on a ledger built to outlast quantum computers. What DSM did for a warehouse today, it does for any system that keeps books on things of value.

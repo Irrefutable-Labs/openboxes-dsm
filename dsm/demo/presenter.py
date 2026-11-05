@@ -19,7 +19,7 @@ PHONES = {"northgate": "RFGYB0PQ8XK", "priya": "RFGYB0PQ9FF", "carrier": "R5CW62
 SCENES = [
     ("Northgate Medical ships medicines to Lakeside District Hospital",
      "This is the DSM version of OpenBoxes, the open-source warehouse system used in hospitals and supply chains. Same screens, same daily work: receiving, shipping, counting.",
-     "DSM is our ledger, kept on independent storage nodes. Underneath OpenBoxes it decides who may act and who holds which goods, as it can for any system that keeps books on things of value. Every figure in this demo is a real entry on those nodes.", None),
+     "DSM is our immutable, forward-only, quantum-resistant ledger, kept on independent storage nodes. Underneath OpenBoxes it decides who may act and who holds which goods, as it can for any system that keeps books on things of value. Every figure in this demo is a real entry on those nodes.", None),
     ("No passwords. Marcus, Northgate's owner, signs in with his phone",
      "In the DSM version, password login is switched off as soon as an organization has an owner. Nobody here has a password on file, so there is nothing to phish, leak or reset.",
      "The login is a signature. Marcus's phone wallet shows him a sentence naming this browser's one-time code; approving it signs that sentence with his key. Only this browser gets in, and the signature cannot be replayed.", "northgate"),
@@ -58,7 +58,7 @@ SCENES = [
      "The finding stays on the record, and the correction is signed with who made it and why. History is added to, never rewritten.", None),
     ("What DSM adds to the warehouse system people already use",
      "OpenBoxes keeps running the warehouse, unchanged for the people who use it.",
-     "No passwords. Seats that can be counted and revoked. Custody two companies can verify without trusting each other. Books that cannot quietly drift. DSM did that here without changing how anyone works; it does the same for any system that keeps books on things of value.", None),
+     "No passwords. Seats that can be counted and revoked. Custody two companies can verify without trusting each other. Books that cannot quietly drift. DSM did that here without changing how anyone works, on a ledger built to outlast quantum computers; it does the same for any system that keeps books on things of value.", None),
 ]
 
 # Scenes that happen on the phone: its screen is shown large, the page behind it dimmed.
