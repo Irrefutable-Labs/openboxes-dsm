@@ -1,11 +1,13 @@
 # Narration
 
-One block per scene. **START** is your trigger: begin the block when the story bar at the bottom of the screen reads
-that scene number. Square brackets are things to wait for, or things that happen on their own while you talk: `[WAIT …]`
-means stop talking and let the picture carry it until the thing in the brackets happens; `[CUT …]` is a change of
-picture that happens by itself. Read at an easy pace; the whole thing is a little under nine minutes.
+One block per scene. **START** is the trigger: begin the block when the story bar at the bottom reads that scene
+number. `[WAIT …]` means stop talking and let the picture carry it until the thing in the brackets happens. `[CUT …]`
+is a change of picture that happens on its own while you talk. Spoken pace, about nine minutes in all.
 
-Before the first scene the screen shows Northgate's sign-in page with the story bar at **1 of 14**.
+This is a walkthrough of a live system, not a story. Talk about what is on the screen and what is happening under it.
+The story bar already carries the headline for each scene; the narration says what the bar does not.
+
+Before the first scene the screen is Northgate's sign-in page with the story bar at **1 of 14**.
 
 ---
 
@@ -13,172 +15,172 @@ Before the first scene the screen shows Northgate's sign-in page with the story 
 
 **START: story bar reads 1 of 14, Northgate's sign-in page**
 
-This is OpenBoxes. It's open-source warehouse software, used in hospitals and supply chains in dozens of countries. What you're looking at is the DSM version of it: the same screens, the same work, nothing about how people use it has changed.
+What's on screen is OpenBoxes, the open-source warehouse system. Hospitals and supply chains run it in dozens of countries. This build is the DSM version. Same application, same screens, same database. One thing is different: the application no longer gets to decide who may act or who holds what. DSM decides that, and OpenBoxes asks.
 
-DSM is our company's work: a deterministic state tracker, immutable and forward-only, with post-quantum cryptographic authority. There's no intermediary server and no blockchain validator in the middle. It runs at the edge, which matters in a supply chain, because the last mile is often somewhere with no internet. No cell service, no Wi-Fi, no worries: two phones over Bluetooth will do. It answers two questions no database can answer honestly about itself: who is allowed to act, and who holds what. Today it's underneath OpenBoxes. It can sit underneath any system that keeps books on things of value.
+DSM is our deterministic state tracker. Every state change is signed, forward-only and immutable, with post-quantum cryptographic authority. There is no server in the middle and no validator set; the storage nodes you'll see referenced today are the ones this network actually runs on. It works at the edge: at the far end of a supply chain, with no internet, two phones over Bluetooth is enough to move custody.
 
-Two organizations: Northgate Medical, a distributor, and Lakeside District Hospital. They run separate copies of OpenBoxes, with separate databases. And underneath both of them sits DSM.
-
-Every amount you'll see move today is a real state change on live storage nodes. No test network, no mock. Four phones, four people.
+The setup for the demo: two organizations, Northgate Medical and Lakeside District Hospital, each with its own copy of OpenBoxes and its own database. Four phones, four people, each with a DSM wallet. The panel on the right logs every request the application makes while we work: the ordinary web requests are tagged WEB2, and the ones that go to DSM are tagged DSM. Watch that panel. Nothing in this demo is mocked.
 
 ## 2. No passwords
 
 **START: story bar reads 2 of 14; the username field is spotlit and "marcus.hale" is being typed**
 
-Marcus Hale owns Northgate. Watch what he doesn't do: he doesn't type a password. In the DSM version nobody has one, and there is no way to set one. There is no password on file for Marcus, or for anyone here. Nothing to phish, nothing to leak, nothing to reset.
+Marcus Hale owns Northgate. He types a username and nothing else. There is no password field, because this build has no passwords: the password table is gone, the password endpoints answer "retired", and there is no page anywhere to set one. There is nothing to phish and nothing to leak.
 
 `[CUT: Marcus's phone appears, bottom left, showing the request to sign]`
 
-Instead, the login is a signature. His phone wallet is asked to sign a sentence. The sentence names this browser's code, and the wallet shows him exactly what it's signing. He approves it.
+What happened on Enter: the server generated a one-time code for this browser and sent a signing request to the wallet connected to Marcus's account. His phone is showing him the exact sentence it is about to sign, with that browser code in it. When he approves, the wallet signs it with his key and the server verifies the signature against the key it already knows.
 
 `[WAIT: the page changes to the dashboard. It stays only a few seconds: inventory value $1,440, one product in stock]`
 
-That signature is the login. Only this browser gets in, and nothing was stored that could be stolen and replayed.
+That signature is the session. It is bound to this browser's code, so it can't be replayed from anywhere else, and nothing was stored on the server that could be stolen later.
 
 ## 3. A seat for Priya
 
 **START: story bar reads 3 of 14; the DSM page, the "assign a seat" card spotlit**
 
-Access isn't a role in a database row. It's a seat. Marcus is giving Priya Nair a warehouse-manager seat at Northgate.
+This is the DSM page inside OpenBoxes. Marcus is assigning Priya Nair a seat as warehouse manager. In stock OpenBoxes this would be a role flag on a user row that any administrator can flip. Here it's a seat: Northgate's owner minted exactly five seat tokens, and that's the cap on how many managers Northgate can have.
 
 `[WAIT: the form fills itself, the button is pressed, and the row "Priya Nair" appears in the seats table]`
 
-Seats are capped: Northgate has five, and they came from a token the owner minted. Each seat is locked in a vault on DSM that names Priya as the holder. She holds it. Only Marcus can take it back. OpenBoxes just reads what the seat allows.
+The request that just went out put seat number one into a vault on DSM with Priya's wallet named as holder. Look at the panel: a DSM entry, signed by Northgate's account. OpenBoxes keeps nothing authoritative about this; when it needs to know what Priya may do, it reads the vault. She can't transfer the seat. Only the owner's wallet can take it back, and you'll see that later.
 
 ## 4. 500 boxes arrive
 
 **START: story bar reads 4 of 14; the "admit" card spotlit, AMX500 / 500 / GRN-77114 filling in**
 
-A delivery. Five hundred boxes of amoxicillin, about nine thousand dollars of stock. Marcus records the goods-received note the way he always has.
+A delivery arrives: five hundred boxes of amoxicillin, roughly nine thousand dollars. Marcus enters the goods-received note number, the product and the quantity. So far that's a normal receipt.
 
 `[CUT: the registry's phone appears with "Pay 500" waiting]`
 
-Here's the difference. Nothing counts until the product registry approves it on its own phone. Units of amoxicillin exist on DSM as tokens, and five hundred of them are entering Northgate's custody right now.
+Now the part that's new. Each product has a token on DSM, one unit per box, and the issuer is the product registry. The registry's wallet is being asked to pay five hundred units into Northgate's custody account. Until it does, Northgate holds nothing, and OpenBoxes will not let the count be recorded.
 
 `[WAIT, about a minute: the phone approves, and the page moves on its own to the Record Stock page, then to the stock card. This is the longest wait in the demo; the storage nodes are settling the transfer]`
 
-Only now is the count recorded on the books. If the registry had said no, the books could not have moved.
+The registry approved, the transfer settled on the storage nodes, and only then did the Record Stock page accept the count: lot number, expiry, five hundred. The stock card now shows five hundred on hand, and DSM's custody record says the same number. Those two numbers were made to agree by construction, not by someone checking.
 
 ## 5. Priya signs in
 
 **START: story bar reads 5 of 14; Northgate's sign-in page again, "priya.nair" being typed**
 
-Priya signs in the same way, from her own phone. Her access comes from the seat she holds, not from anything in Northgate's database. And her seat is checked against the storage nodes on every single click.
+Priya signs in the same way, from her own phone. Her session is her wallet's signature, and her permissions come from the seat in the vault. There's no role on her user row to edit.
 
 `[WAIT: Priya's phone appears and approves; the dashboard shows briefly, now with inventory value $10,640 and two products in stock]`
+
+One detail that matters later: OpenBoxes checks her seat against the storage nodes on every request she makes, not once at login.
 
 ## 6. Priya ships 120, from her phone
 
 **START: story bar reads 6 of 14; the picture becomes Priya's phone, large, on the Send tab**
 
-From here on the work happens at the door, on phones. This is OpenBoxes on Priya's phone: the same system, signed in with the same wallet.
+We're now on Priya's phone. This is OpenBoxes served to a phone browser: the door screen, with Send, Door and Receive tabs. Same server, same session, same wallet.
 
 `[WAIT: the "New shipment" form opens: To Lakeside, the count goes to 120]`
 
-She's sending a hundred and twenty boxes to Lakeside. She counts them from the stock on hand and ships.
+She's building a shipment to Lakeside: one hundred and twenty boxes from the stock on hand. The picker only offers what's physically available to promise.
 
 `[WAIT: the toast "Shipping. DSM moves the custody now.", then the card for the new shipment, "Needs a carrier"]`
 
-Watch the order of events. Custody moves on DSM first. The paperwork follows. If DSM had refused, nothing would have been recorded anywhere.
+Note the order of operations. The first thing the server did was move a hundred and twenty custody units from Northgate's account to Lakeside's account on DSM. The stock movement, the picklist, the shipment record, all of that was written only after DSM confirmed the move. If DSM had refused, OpenBoxes would have written nothing. The card says "Needs a carrier" because custody has left Northgate's books but the boxes are still on the dock.
 
 ## 7. The driver
 
 **START: story bar reads 7 of 14; Priya's phone, the carrier picker shows "Dev Okafor, Meridian Freight"**
 
-The boxes don't drive themselves. Dev Okafor drives for Meridian Freight, and he has never logged into anything. He has a wallet.
+Priya picks the carrier. Dev Okafor drives for Meridian Freight. He has no OpenBoxes account at either organization and never will; what he has is a wallet, and that wallet adopted Northgate's custody token before today.
 
 `[WAIT: "Hand to carrier" is tapped; the card changes to "With carrier"]`
 
-Northgate's account pays a hundred and twenty custody units to his wallet. Not money: custody. One unit, one box.
+Northgate's account just paid a hundred and twenty units of its custody token to the driver's wallet. One unit per box. That's not money and it isn't the product token; it's a receipt of physical possession that only Lakeside's account will accept.
 
 `[CUT: the picture becomes the driver's phone, his wallet's history, with the 120 NGCUST just received]`
 
-He now holds the goods, provably, and nothing else of value. Normally this is a paper manifest and trust. Here it's a fact on the storage nodes.
+This is the driver's wallet. The hundred and twenty NGCUST units are in his history. Between the two warehouses, the system knows exactly who has the goods, and that knowledge is a signed entry, not a line on a manifest.
 
 ## 8. At Lakeside's door
 
 **START: story bar reads 8 of 14; the picture becomes Amara's phone, Lakeside's Door tab, "0 of 120 units handed over so far"**
 
-Lakeside. Amara Osei owns the pharmacy and works its door. Her OpenBoxes knows nothing about this shipment yet. Her books say zero, and until custody arrives nothing can be taken in.
+Now Lakeside, and Amara Osei's phone. This is a different OpenBoxes on a different database, and it has no record of this shipment. What it does have is DSM: Lakeside's account can see a hundred and twenty units inbound, and that zero of them have been handed over yet. The Take In button isn't there, because there's nothing to take.
 
 `[WAIT: she opens "Ask another carrier's wallet", picks the driver, taps "Ask them to hand over"]`
 
-She asks the driver's wallet to hand over.
+Amara picks the driver's wallet and asks it to hand over. That request goes out over DSM, not over anything Northgate operates.
 
 `[CUT: the driver's phone, with "Pay 120 NGCUST" waiting; he approves]`
 
-The request shows up on his phone, and he approves it.
+On the driver's phone it shows up as a payment request: a hundred and twenty NGCUST to Lakeside's account. He approves.
 
 `[CUT back to Amara's phone. WAIT: the card changes to "Handed over" and a "Take in" button appears; she taps it]`
 
-His wallet paid the units to Lakeside's account. Now, and only now, the door screen lets her take the boxes in.
+The units landed, the door screen flipped to "Handed over", and only now does Take In appear. Tapping it is the moment Lakeside's OpenBoxes creates its own inbound shipment record, from DSM's facts, with nobody at Northgate involved.
 
 ## 9. Counting
 
 **START: story bar reads 9 of 14; Amara's phone, the Receive tab, "Count and receive"**
 
-Amara counts.
+The receiving count.
 
 `[WAIT: the count is set to 130 and "Receive 130 units" is tapped]`
 
-Let's say she counts wrong, or someone's hoping she will: a hundred and thirty.
+She enters a hundred and thirty. Could be a miscount, could be deliberate. Stock OpenBoxes takes the number.
 
 `[WAIT: the red toast: "receipts record 130 … but DSM moved 120 … cannot receive units it has no custody of"]`
 
-Refused on the spot. OpenBoxes would normally accept whatever you type. DSM moved a hundred and twenty, so a hundred and twenty is all that can be received.
+Refused, with the reason on screen: DSM moved a hundred and twenty, and the application cannot receive units it has no custody of. That's a hard stop in the write path, not a warning.
 
 `[WAIT: the count goes to 120, "Receive 120 units" is tapped, the green toast "Received shipment …"]`
 
-She counts again, a hundred and twenty, and it's received. The books at Lakeside are in line with the truth, and they never had the chance to drift.
+A hundred and twenty is accepted. Lakeside's books now match the custody record, and there was no way for them not to.
 
 ## 10. Revoked
 
 **START: story bar reads 10 of 14; back in the browser, Northgate's Browse Inventory page in Priya's session, Marcus's phone bottom left**
 
-Back at Northgate. Say Priya leaves, or her phone is stolen. Nobody edits a user record. Nobody resets a password. Nobody waits for a nightly job.
+Back in the browser, and this is still Priya's session at Northgate, signed in and working. Now suppose Priya leaves, or her phone goes missing.
 
 `[WAIT, up to a minute: Marcus's phone works through the revoke in his wallet]`
 
-Marcus revokes her seat from his wallet. The decision is final on the storage nodes.
+Marcus is on his own wallet, taking seat number one back from the vault. No one touched Northgate's database, no user row was edited, no session was flushed. The revoke is a signed state change on the storage nodes, and it's final.
 
 `[WAIT: the page tries the dashboard and lands on the sign-in page instead: Priya is out]`
 
-Her very next click is refused. The seat is back with Northgate, ready for someone else.
+Her next request. The seat check fails, the session is refused, and the page tells her why: the owner revoked the seat from their own wallet. That seat is back in Northgate's pool for someone else.
 
 ## 11. Proof across companies
 
 **START: story bar reads 11 of 14; the sign-in page, "marcus.hale" typed again and approved on his phone; then the DSM page with the transfers table spotlit**
 
-Northgate wants to know Lakeside still holds what was sent. No login into Lakeside's system. No export. No shared database.
+Marcus signs back in. The question now is one that two separate companies normally can't answer without a phone call or a shared login: does Lakeside still hold what Northgate sent?
 
-`[WAIT: "Verify partner" is pressed; the message says "Asking the partner's account to prove what it holds." Then, up to half a minute, "Proven: they hold 120 units." and the Proven column fills in]`
+`[WAIT: "Verify partner" is pressed; the message says "Asking the partner's account to prove what it holds." Then, within a few seconds, "Proven: they hold 120 units." and the Proven column fills in]`
 
-Lakeside's account proves its holding against the storage nodes, and Northgate checks the proof itself. A hundred and twenty.
+Northgate's account asked Lakeside's account for a proof of its holding. Lakeside's account answered with a proof against the storage nodes, and Northgate's account verified that proof itself before the page showed the number. Northgate never read Lakeside's database and never got a login. It got a verified fact: a hundred and twenty.
 
 ## 12. Someone edits the database
 
 **START: story bar reads 12 of 14; the "books and DSM" card spotlit**
 
-Now the part every warehouse system is quietly afraid of. Someone with database access adds forty boxes by hand. Seven hundred dollars of stock that doesn't exist. The stock screens show it. They have no way to know better.
+Now the failure every warehouse system has and nobody likes to demo. Someone with database access just ran an UPDATE on Northgate's inventory, off camera: forty boxes of amoxicillin that were never received, about seven hundred dollars. The stock screens show four hundred and twenty. Nothing in a conventional system can tell those forty from the real ones.
 
 `[WAIT: "Check now" is pressed twice, a few seconds apart; a row appears: AMX500, gap 40, $736; then a signed GAP finding in the table below]`
 
-DSM never moved those boxes. The check finds the gap, and it signs a finding that cannot be edited away. Not a log line. A signed record.
+The reconciler adds up the books from the transactions and compares them with DSM's custody record. The books say four twenty, custody says three eighty, gap forty. It writes that as a signed finding on DSM, under Northgate's account. Deleting the rogue row now wouldn't help; the finding exists outside the database.
 
 ## 13. Corrected forward
 
 **START: story bar reads 13 of 14; the reason field is filled: "Books edited by hand; matched to DSM"**
 
-The fix is a new entry, not a rewrite.
+Correction is a new entry, not a rewrite. Marcus gives a reason.
 
 `[WAIT: "Match the books to DSM" is pressed; the message names the adjustment; a CORRECTED row joins the GAP row, which stays]`
 
-Marcus brings the books back to the truth, and the finding stays on the record, with who corrected it and why.
+An adjustment transaction brings the books back to three eighty, and a second signed record goes to DSM: who corrected it, why, and which adjustment did it. The GAP finding is still there above it. That is the whole model: history is only ever added to.
 
 ## 14. Close
 
 **START: story bar reads 14 of 14**
 
-So: no passwords. Seats that can be counted and revoked. Custody that two companies can verify without trusting each other. And books that cannot quietly drift.
+What you watched: sign-in by signature, with no passwords anywhere in the system. Access as seats, minted by the owner, capped, and revocable from a phone. Custody that moved between two companies and a driver with every step signed, and that one company proved to the other without access. And books that were caught the moment they drifted, with the finding kept.
 
-Same OpenBoxes. Same screens. Same people. DSM underneath: post-quantum authority, no server in the middle, and it reaches the end of the supply chain where there's no internet at all. What DSM did for a warehouse today, it does for any system that keeps books on things of value.
+OpenBoxes didn't change for the people using it. DSM sits underneath it: post-quantum authority, no server in the middle, working at the edge where the internet ends. It does the same for any system that keeps books on things of value.
