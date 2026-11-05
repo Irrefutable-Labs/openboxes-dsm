@@ -70,6 +70,12 @@ def tap(phone, selector):
     on_phone(phone, "document.querySelector(%s).click(); 1" % json.dumps(selector))
 
 
+def offered(phone, selector, words, seconds=60, what="the picker offers the driver"):
+    """Wait until a select matching `selector` on the door screen has an option naming `words`: the screen draws it after its first refresh."""
+    wait(seconds, lambda: words in on_phone(phone, "Array.prototype.map.call(document.querySelectorAll(%s), function (s) { return Array.prototype.map.call(s.options, function (o) { return o.text; }).join('|'); }).join('|')"
+                                             % json.dumps(selector)), what)
+
+
 def pick(phone, selector, words):
     """Choose the option naming `words` in the select(s) `selector` on the door screen, and say what was chosen."""
     return on_phone(phone, "Array.prototype.map.call(document.querySelectorAll(%s), function (s) { var o = Array.prototype.filter.call(s.options, function (o) { return o.text.indexOf(%s) >= 0; })[0]; if (o) s.value = o.value; return s.options[s.selectedIndex].text; }).join('|')"
@@ -167,7 +173,8 @@ def do(n):
         scene(7)
         door_screen(priya, 8081, "priya.nair")
         tap(priya, "[data-go=send]")
-        time.sleep(5)
+        offered(priya, "select[id^=dispatch-]", "Dev Okafor")
+        time.sleep(2)
         print("  picker shows:", pick(priya, "select[id^=dispatch-]", "Dev Okafor"))
         time.sleep(4)
         pick_and_tap(priya, "select[id^=dispatch-]", "Dev Okafor", "[data-dispatch]")
@@ -185,7 +192,9 @@ def do(n):
         door_screen(amara, 8082, "amara.osei")
         time.sleep(7)
         on_phone(amara, "var d = document.querySelector('#arriving details'); if (d) d.open = true; 1")
-        time.sleep(3)
+        offered(amara, "select[id^=carrier-]", "Dev Okafor")
+        on_phone(amara, "var d = document.querySelector('#arriving details'); if (d) d.open = true; 1")
+        time.sleep(2)
         print("  picker shows:", pick(amara, "select[id^=carrier-]", "Dev Okafor"))
         time.sleep(3)
         pick_and_tap(amara, "select[id^=carrier-]", "Dev Okafor", "[data-handover][data-pick]")
@@ -226,7 +235,7 @@ def do(n):
             subprocess.run([sys.executable, "-I", HERE + "/partner_answers.py"], capture_output=True, text=True, timeout=280)
             if one("a", "select proven_amount from dsm_custody_transfer where kind='SHIPMENT'") == "120":
                 break
-            time.sleep(5)
+            time.sleep(1)
     elif n == 12:
         print(subprocess.run(["bash", HERE + "/tamper.sh"], capture_output=True, text=True, timeout=60).stdout.strip())
     CHECKS.get(n, lambda: None)()

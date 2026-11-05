@@ -67,12 +67,12 @@ def router(op, method, body):
 
 router(2, "connect.sync", b"")
 pending = []
-for _ in range(10):
+for _ in range(50):
     reply = router(1, "connect.pending", b"")
     pending = [dict(parse(v)) for n, v in parse(reply[4]) if n == 1] if 4 in reply else []
     if pending:
         break
-    time.sleep(5)
+    time.sleep(1)
     router(2, "connect.sync", b"")
 print("waiting at the hospital:", [(p.get(3, b"").decode(), p.get(4, b"").decode()[:70]) for p in pending])
 for p in pending:
