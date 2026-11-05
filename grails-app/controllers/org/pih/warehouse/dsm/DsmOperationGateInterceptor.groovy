@@ -45,7 +45,11 @@ class DsmOperationGateInterceptor {
 
     private boolean refuse(int status, String why, boolean endSession) {
         if (endSession) {
-            session.invalidate()
+            try {
+                session.invalidate()
+            } catch (IllegalStateException alreadyGone) {
+                // two requests of the same session were refused at once (a page and the overlay's poll): the first ended it
+            }
         }
         if (RequestUtil.isAjax(request)) {
             response.status = status
