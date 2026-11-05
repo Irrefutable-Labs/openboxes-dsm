@@ -13,7 +13,7 @@ Before the first scene the screen shows Northgate's sign-in page with the story 
 
 **START: story bar reads 1 of 14, Northgate's sign-in page**
 
-This is OpenBoxes. It's open-source warehouse software, used in hospitals and supply chains in dozens of countries. Nothing about how people use it has changed in what you're about to see.
+This is OpenBoxes. It's open-source warehouse software, used in hospitals and supply chains in dozens of countries. What you're looking at is our build of it: the same screens, the same work, nothing about how people use it has changed.
 
 What has changed is who's in charge of the truth. Two organizations: Northgate Medical, a distributor, and Lakeside District Hospital. They run separate copies of OpenBoxes, with separate databases. And underneath both of them sits DSM.
 
@@ -23,11 +23,11 @@ Every amount you'll see move today is a real state change on live storage nodes.
 
 **START: story bar reads 2 of 14; the username field is spotlit and "marcus.hale" is being typed**
 
-Marcus Hale owns Northgate. Watch what he doesn't do: he doesn't type a password. There isn't one. OpenBoxes has no password to check and refuses them all.
+Marcus Hale owns Northgate. Watch what he doesn't do: he doesn't type a password. In this build, password login is switched off the moment an organization has an owner. There is no password on file for Marcus, or for anyone here. Nothing to phish, nothing to leak, nothing to reset.
 
 `[CUT: Marcus's phone appears, bottom left, showing the request to sign]`
 
-His phone wallet is asked to sign a sentence. The sentence names this browser's code, and the wallet shows him exactly what it's signing. He approves it.
+Instead, the login is a signature. His phone wallet is asked to sign a sentence. The sentence names this browser's code, and the wallet shows him exactly what it's signing. He approves it.
 
 `[WAIT: the page changes to the dashboard. It stays only a few seconds: inventory value $1,440, one product in stock]`
 

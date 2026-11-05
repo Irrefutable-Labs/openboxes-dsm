@@ -18,11 +18,11 @@ PHONES = {"northgate": "RFGYB0PQ8XK", "priya": "RFGYB0PQ9FF", "carrier": "R5CW62
 # title, what the ordinary system does, what DSM does, which phone to show
 SCENES = [
     ("Northgate Medical ships medicines to Lakeside District Hospital",
-     "OpenBoxes stays the warehouse system people already use.",
-     "DSM takes over who may act and who holds what. Every amount here is a real state change on live storage nodes.", None),
+     "This is our build of OpenBoxes, the open-source warehouse system: the same screens, the same work.",
+     "Underneath, DSM decides who may act and who holds what. Every amount here is a real state change on live storage nodes.", None),
     ("No passwords. Marcus, Northgate's owner, signs in with his phone",
-     "OpenBoxes has no password to check, and refuses them all.",
-     "His wallet signs the words on its screen, naming the code this browser shows. Only that browser gets in.", "northgate"),
+     "In this build, password login is switched off once an organization has an owner. Nobody has a password on file: nothing to phish, leak or reset.",
+     "The login is a signature. His wallet signs the words on its screen, naming the code this browser shows, and only that browser gets in.", "northgate"),
     ("Marcus gives Priya a seat as warehouse manager",
      "OpenBoxes just reads what the seat allows.",
      "Seats are capped, and locked in a vault naming her. She holds it, and only Marcus can take it back.", None),
