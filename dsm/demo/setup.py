@@ -269,7 +269,7 @@ def keep_two_old_runs():
     """Earlier runs are moved aside, not deleted, so a take can be looked into afterwards; two are enough. Older ones go:
     their directories here and their two database containers with the containers' own volumes (2026-11-05, the owner's
     word, after sixty of them filled Docker's disk)."""
-    olds = sorted(d for d in os.listdir(HERE) if d.startswith("run-before-"))
+    olds = sorted((d for d in os.listdir(HERE) if d.startswith("run-before-")), key=lambda d: os.path.getmtime(os.path.join(HERE, d)))
     for old in olds[:-2]:
         stamp = old[len("run-before-"):]
         for org in ("a", "b"):
