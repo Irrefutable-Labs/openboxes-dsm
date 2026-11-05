@@ -12,6 +12,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -264,6 +265,25 @@ def seeded(org, name, port):
     return instance
 
 
+def keep_two_old_runs():
+    """Earlier runs are moved aside, not deleted, so a take can be looked into afterwards; two are enough. Older ones go:
+    their directories here and their two database containers with the containers' own volumes (2026-11-05, the owner's
+    word, after sixty of them filled Docker's disk)."""
+    olds = sorted(d for d in os.listdir(HERE) if d.startswith("run-before-"))
+    for old in olds[:-2]:
+        stamp = old[len("run-before-"):]
+        for org in ("a", "b"):
+            sh("docker", "rm", "-fv", "openboxes-demo-%s-before-%s" % (org, stamp))
+        shutil.rmtree(os.path.join(HERE, old), ignore_errors=True)
+        say("  an old run is gone: " + old)
+    # containers whose run directory is already gone (earlier naming) go the same way
+    listed = sh("docker", "ps", "-a", "--format", "{{.Names}}").split()
+    kept = {"openboxes-demo-%s-before-%s" % (org, d[len("run-before-"):]) for d in olds[-2:] for org in ("a", "b")}
+    for name in listed:
+        if re.match(r"^openboxes-demo-(a|b)-before-", name) and name not in kept:
+            sh("docker", "rm", "-fv", name)
+
+
 def fresh():
     say("connected wallets leave the old run")
     for ip in (NORTHGATE, PRIYA, CARRIER, LAKESIDE):
@@ -283,8 +303,9 @@ def fresh():
         if not sh("pgrep", "-f", "openboxes.war|dsm-app-host").strip():
             break
         time.sleep(1)
-    stamp = time.strftime("%H%M%S")
+    stamp = time.strftime("%Y%m%d-%H%M%S")
     os.rename(HERE + "/run", HERE + "/run-before-" + stamp)
+    keep_two_old_runs()
     for org in ("a", "b"):
         sh("docker", "stop", "openboxes-demo-" + org)
         sh("docker", "rename", "openboxes-demo-" + org, "openboxes-demo-%s-before-%s" % (org, stamp))
