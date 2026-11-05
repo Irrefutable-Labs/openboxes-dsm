@@ -33,12 +33,56 @@ class DsmWalletSignInController {
             return
         }
         try {
+            boolean noOwner = !dsmAuthorityService.ownerExists()
+            if (noOwner) {
+                dsmWalletService.firstRunAccount(grailsApplication.config.getProperty("openboxes.dsm.host.origin", String),
+                        grailsApplication.config.getProperty("openboxes.dsm.host.dataDir", String),
+                        grailsApplication.config.getProperty("openboxes.dsm.host.registry", String))
+            }
             ConnectAppOfferV1 offer = dsmWalletService.offerToWallet()
             session.dsmOfferDigest = Base32Crockford.encode(offer.offerDigest.toByteArray())
             session.dsmOfferCode = offer.code
-            [code: offer.code, failure: null, next: sensible(session.targetUri as String)]
+            [code: offer.code, failure: null, next: sensible(session.targetUri as String), noOwner: noOwner]
         } catch (DsmCustodyException | DsmHostException refused) {
-            [code: null, failure: refused.message, next: sensible(session.targetUri as String)]
+            [code: null, failure: refused.message, next: sensible(session.targetUri as String), noOwner: false]
+        }
+    }
+
+    /**
+     * A fresh installation has no owner and no way to sign in: the first wallet to connect through this page's code and
+     * sign the owner statement becomes the owner, bound to the installation's administrator account, and this browser is
+     * signed in as them. GET gives the code; POST moves the claim on. There is no password at any point.
+     */
+    def claim() {
+        try {
+            if (dsmAuthorityService.ownerExists()) {
+                render([state: "OWNED"] as JSON)
+                return
+            }
+            if (!session.dsmOfferDigest) {
+                dsmWalletService.firstRunAccount(grailsApplication.config.getProperty("openboxes.dsm.host.origin", String),
+                        grailsApplication.config.getProperty("openboxes.dsm.host.dataDir", String),
+                        grailsApplication.config.getProperty("openboxes.dsm.host.registry", String))
+                ConnectAppOfferV1 offer = dsmWalletService.offerToWallet()
+                session.dsmOfferDigest = Base32Crockford.encode(offer.offerDigest.toByteArray())
+                session.dsmOfferCode = offer.code
+            }
+            if (request.method != "POST") {
+                render([code: session.dsmOfferCode, offerDigest: session.dsmOfferDigest] as JSON)
+                return
+            }
+            Map step = dsmWalletService.claimOwnership(session.dsmOfferDigest as String, dsmWalletService.firstAdministrator(),
+                    session.dsmOwnerAsk as Map)
+            session.dsmOwnerAsk = step.asked
+            if (step.owner) {
+                DsmWallet wallet = DsmWallet.findByDeviceId(step.device as String)
+                session.dsmOwnerAsk = null
+                finishSignIn(wallet, "Claimed ${dsmWalletService.homeName()} as its owner".toString(), null, null, null)
+                return
+            }
+            render([state: step.asked ? "ASKED" : "WAITING", statement: step.asked?.statement] as JSON)
+        } catch (DsmCustodyException | DsmHostException refused) {
+            render([state: "FAILED", reason: refused.message] as JSON)
         }
     }
 

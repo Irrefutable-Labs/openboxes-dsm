@@ -17,7 +17,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-ADMIN = ("admin", "password")
 
 # Code at the distributor, code at the hospital, name at each, unit price in USD at each.
 PRODUCTS = [
@@ -51,15 +50,14 @@ class Instance:
             return text
 
     def wait_up(self):
+        """Until the server answers. Signing in is the caller's: there are no passwords, the owner's wallet claims the organization."""
         deadline = time.time() + 900
         while True:
             try:
-                self.call("POST", "/api/login", json_body={"username": ADMIN[0], "password": ADMIN[1], "location": "1"})
+                self.call("GET", "/health")
                 return True
-            except SystemExit as refused:
-                if "answered 401" in str(refused):
-                    return False
-                raise
+            except SystemExit:
+                return True
             except (urllib.error.URLError, ConnectionError, OSError):
                 if time.time() > deadline:
                     raise SystemExit(self.name + " did not come up")
@@ -67,10 +65,8 @@ class Instance:
 
 
 def seed(instance, warehouse, partner, products, category_name):
+    """Sample data through `instance`, whose cookie jar must already hold the owner's session."""
     print("--", instance.name, flush=True)
-    if not instance.wait_up():
-        print("   an owner's wallet has taken this organization over: nothing to seed", flush=True)
-        return
     instance.call("POST", "/api/generic/location/1", json_body={"name": warehouse})
     instance.call("POST", "/api/generic/location/2", json_body={"name": partner})
     held = {p.get("productCode") for p in instance.call("GET", "/api/generic/product/?max=100")}
@@ -99,11 +95,7 @@ def seed(instance, warehouse, partner, products, category_name):
 
 
 def main():
-    seed(Instance("Northgate Medical Distribution (sample)", 8081), "Northgate Central Warehouse",
-         "Lakeside District Hospital", [(p[0], p[2], p[4]) for p in PRODUCTS], "Pharmaceuticals")
-    seed(Instance("Lakeside District Hospital (sample)", 8082), "Lakeside Hospital Pharmacy",
-         "Northgate Medical Distribution", [(p[1], p[3], p[5]) for p in PRODUCTS], "Medicines")
-    print("READY")
+    raise SystemExit("seed.py is run by setup.py, after each organization's owner has claimed it: there is no login to seed with on its own")
 
 
 if __name__ == "__main__":

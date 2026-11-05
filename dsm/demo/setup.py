@@ -8,6 +8,7 @@ Northgate's warehouse manager (RFGYB0PQ9FF), connected to Northgate as a person.
 (RF8Y90PX5GN). Nothing is left to do but the story.
 """
 import http.cookiejar
+import importlib.util
 import json
 import os
 import re
@@ -19,6 +20,9 @@ import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+spec = importlib.util.spec_from_file_location("seed", HERE + "/seed.py")
+seed = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(seed)
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 D = os.path.abspath(os.path.join(ROOT, ".."))
 # The phones by hardware serial: adb lists them by mDNS name (or IP when connected by address), and both hold the serial.
@@ -211,8 +215,23 @@ class Org:
             return text
         return answer.get("data", answer)
 
-    def login(self, username):
-        self.call("/api/login", body={"username": username, "password": "password", "location": "1"})
+    def claim(self, phone):
+        """The first run: this wallet connects through the sign-in page's code and signs the owner statement. The session
+        this client holds is the owner's afterwards. There is no password anywhere."""
+        code = self.call("/dsmWalletSignIn/claim")
+        phone.connect(code["code"])
+        asked = False
+        for _ in range(60):
+            step = self.call("/dsmWalletSignIn/claim", form={})
+            if step.get("state") == "SIGNED_IN":
+                return code["offerDigest"]
+            if step.get("state") == "FAILED":
+                raise SystemExit("the owner claim failed: " + str(step.get("reason")))
+            if step.get("state") == "ASKED" and not asked:
+                phone.approve("I own")
+                asked = True
+            time.sleep(4)
+        raise SystemExit("the owner claim never finished")
 
     def account(self):
         return [a for a in self.call("/api/dsm/accounts") if a.get("locationId")][0]["id"]
@@ -236,6 +255,13 @@ class Org:
                 asked = True
             time.sleep(4)
         raise SystemExit("no answer from the wallet for " + purpose)
+
+
+def seeded(org, name, port):
+    """seed.py's client over an organization's owner session."""
+    instance = seed.Instance(name, port)
+    instance.opener = org.open
+    return instance
 
 
 def fresh():
@@ -268,13 +294,10 @@ def fresh():
         if "READY" in open(HERE + "/logs/network.log").read():
             break
         time.sleep(2)
-    sh("python3", HERE + "/up.py", "a", "b", "seed")
-    say("OpenBoxes is starting, and the sample data goes in")
-    for _ in range(150):
-        if "READY" in open(HERE + "/logs/seed.log").read():
-            return
-        time.sleep(4)
-    raise SystemExit("the seed never finished: " + open(HERE + "/logs/seed.log").read()[-500:])
+    sh("python3", HERE + "/up.py", "a", "b")
+    say("OpenBoxes is starting")
+    for port in (8081, 8082):
+        seed.Instance("openboxes", port).wait_up()
 
 
 def main():
@@ -285,10 +308,22 @@ def main():
                                               ("b", "Amara", "Osei", "amara.osei", "amara.osei@lakeside.example")):
         sql(org, "update person p join user u on u.id=p.id set p.first_name='%s', p.last_name='%s', p.email='%s' where u.username='admin'; "
                  "update user set username='%s' where username='admin'" % (first, last, email, username))
-    north.login("marcus.hale")
-    lake.login("amara.osei")
+    say("Marcus claims Northgate on his phone: the first run, no password anywhere")
+    digest = north.claim(marcus)
+    say("Amara claims Lakeside on her phone")
+    lake.claim(amara)
+    for org, who in ((north, "Marcus Hale"), (lake, "Amara Osei")):
+        owners = [w["label"] for w in org.call("/dsmWallet/state")["wallets"] if w["owner"]]
+        if owners != [who]:
+            raise SystemExit("the owner claim did not land: %s owns %s" % (owners, who))
 
-    say("products on DSM, and the two organizations connect, while each still has its setup login")
+    say("the sample data goes in, as each owner")
+    seed.seed(seeded(north, "Northgate Medical Distribution (sample)", 8081), "Northgate Central Warehouse",
+              "Lakeside District Hospital", [(p[0], p[2], p[4]) for p in seed.PRODUCTS], "Pharmaceuticals")
+    seed.seed(seeded(lake, "Lakeside District Hospital (sample)", 8082), "Lakeside Hospital Pharmacy",
+              "Northgate Medical Distribution", [(p[1], p[3], p[5]) for p in seed.PRODUCTS], "Medicines")
+
+    say("products on DSM, and the two organizations connect")
     north_account, lake_account = north.account(), lake.account()
     for org, code, anchor in ((north, "AMX500", AMX), (north, "ORS020", ORS), (lake, "PH-10412", AMX), (lake, "PH-30145", ORS)):
         org.call("/api/dsm/tokens/adoptions", form={"productId": org.product(code), "policyAnchor": anchor})
@@ -296,15 +331,8 @@ def main():
     lake.call("/api/dsm/connections/accepts", form={"accountId": lake_account, "code": offer["code"], "peerLocationId": "2"})
     north.call("/api/dsm/connections/confirmations", form={"accountId": north_account, "offerDigest": offer["offerDigest"], "peerLocationId": "2"})
 
-    say("Marcus claims Northgate on his phone")
-    digest, _ = north.wallet("owner", marcus)
+    say("Marcus's wallet also stands in as the product registry")
     north.call("/dsmWallet/answered", form={"offerDigest": digest, "purpose": "registry"})
-    say("Amara claims Lakeside on her phone")
-    lake.wallet("owner", amara)
-    for org, who in ((north, "Marcus Hale"), (lake, "Amara Osei")):
-        owners = [w["label"] for w in org.call("/dsmWallet/state")["wallets"] if w["owner"]]
-        if owners != [who]:
-            raise SystemExit("the owner claim did not land: %s owns %s" % (owners, who))
 
     say("seats: the level and five released")
     me = north.call("/dsmWallet/state")["me"]["id"]

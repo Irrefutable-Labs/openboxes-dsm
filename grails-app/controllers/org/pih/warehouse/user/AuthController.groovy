@@ -48,13 +48,18 @@ class AuthController {
     /**
      * Allows user to log into the system.
      */
+    /** There are no passwords in this build: a fresh organization is claimed with a wallet, and everyone signs in with one. */
+    private static boolean passwordsRetired() {
+        return true
+    }
+
     def login() {
         if (session.user) {
             flash.message = "You have already logged in."
             redirect(controller: "dashboard", action: "index")
             return
         }
-        if (dsmAuthorityService.ownerExists()) {
+        if (passwordsRetired()) {
             redirect(controller: "dsmWalletSignIn", action: "index")
             return
         }
@@ -71,7 +76,7 @@ class AuthController {
      * Performs the authentication logic.
      */
     def handleLogin() {
-        if (dsmAuthorityService.ownerExists()) {
+        if (passwordsRetired()) {
             redirect(controller: 'dsmWalletSignIn', action: 'index')
             return
         }
@@ -161,7 +166,7 @@ class AuthController {
      * Allow user to register a new account
      */
     def signup() {
-        if (dsmAuthorityService.ownerExists()) {
+        if (passwordsRetired()) {
             redirect(controller: 'dsmWalletSignIn', action: 'index')
             return
         }
@@ -184,7 +189,7 @@ class AuthController {
      */
     @Transactional
     def handleSignup() {
-        if (dsmAuthorityService.ownerExists()) {
+        if (passwordsRetired()) {
             redirect(controller: 'dsmWalletSignIn', action: 'index')
             return
         }

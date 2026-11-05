@@ -25,7 +25,11 @@ class DsmTestOpenBoxes extends DsmTestProcess {
         this.dataRoot = dataRoot
     }
 
-    static DsmTestOpenBoxes start(String name, File dataRoot) {
+    /**
+     * @param host the DSM host this instance is started with: its account on first run, a warehouse's unless
+     *             `registryLabel` names a product registry
+     */
+    static DsmTestOpenBoxes start(String name, File dataRoot, DsmTestHost host, String registryLabel = null) {
         String classpath = System.getProperty("openboxes.test.classpath")
         if (!classpath) {
             throw new IllegalStateException("openboxes.test.classpath is not set: build.gradle sets it for test tasks")
@@ -43,22 +47,30 @@ class DsmTestOpenBoxes extends DsmTestProcess {
                 "org.pih.warehouse.Application",
                 "--server.port=${port}".toString(),
                 "--openboxes.dsm.dataRoot=${dataRoot.canonicalPath}".toString(),
+                "--openboxes.dsm.host.origin=${host.ingressOrigin}".toString(),
+                "--openboxes.dsm.host.dataDir=${host.dataDir.canonicalPath}".toString(),
         ]
+        if (registryLabel) {
+            command << "--openboxes.dsm.host.registry=${registryLabel}".toString()
+        }
         ProcessBuilder builder = new ProcessBuilder(command)
         builder.redirectOutput(ProcessBuilder.Redirect.to(log))
         builder.redirectErrorStream(true)
         return new DsmTestOpenBoxes(name, log, builder.start(), port, dataRoot)
     }
 
-    /** Returns once the instance answers a sign-in: every migration has run and the application is serving. */
+    /** Returns once the instance serves: every migration has run and the application answers. */
     void awaitUp() {
         long deadline = System.currentTimeMillis() + STARTUP_TIMEOUT_MS
         String last = ""
         while (System.currentTimeMillis() < deadline) {
             requireAlive()
             try {
-                session("admin", "password")
-                return
+                Map answer = new Session(siteUrl).exchange("GET", "/health", null, null)
+                if (answer.status == 200) {
+                    return
+                }
+                last = "health answered ${answer.status}"
             } catch (IOException | IllegalStateException notYet) {
                 last = notYet.message
             }
@@ -71,15 +83,65 @@ class DsmTestOpenBoxes extends DsmTestProcess {
         return "http://127.0.0.1:${port}/openboxes/api".toString()
     }
 
-    /** A signed-in session at the default warehouse. */
-    Session session(String username, String password, String locationId = "1") {
-        Session session = new Session(baseUrl)
-        Map answer = session.exchange("POST", "/login", JsonOutput.toJson(
-                [username: username, password: password, location: locationId]), "application/json")
-        if (answer.status != 200 || !session.cookie) {
-            throw new IllegalStateException("${username} cannot sign in to ${name}: ${answer.status} ${answer.text}")
+    String getSiteUrl() {
+        return "http://127.0.0.1:${port}/openboxes".toString()
+    }
+
+    /**
+     * The first run: `wallet` connects through the sign-in page's code and signs the owner statement, and becomes the
+     * owner. There is no password at any point. The session returned is the owner's.
+     */
+    Session claim(DsmTestHost wallet) {
+        Session page = new Session(siteUrl)
+        Map offered = page.exchange("GET", "/dsmWalletSignIn/claim", null, null)
+        if (offered.status != 200 || !offered.json?.code) {
+            throw new IllegalStateException("${name} offers no code to claim it: ${offered.status} ${offered.text}")
         }
-        return session
+        wallet.connectByCode(offered.json.code as String)
+        answeredBy(wallet, "${name} claimed by ${wallet.name}") {
+            Map step = page.exchange("POST", "/dsmWalletSignIn/claim", "", "application/x-www-form-urlencoded")
+            if (step.json?.state == "FAILED") {
+                throw new IllegalStateException("${name} could not be claimed: ${step.json.reason}")
+            }
+            step.json?.state == "SIGNED_IN" ? step : null
+        }
+        return apiSession(page)
+    }
+
+    /** A person signs in: their wallet is asked over its session and `wallet` approves, as a phone does. */
+    Session signIn(String username, DsmTestHost wallet) {
+        Session page = new Session(siteUrl)
+        Map asked = page.exchange("POST", "/dsmWalletSignIn/ask", "username=${URLEncoder.encode(username, "UTF-8")}", "application/x-www-form-urlencoded")
+        if (asked.json?.state != "ASKED") {
+            throw new IllegalStateException("${name} did not ask ${username}'s wallet: ${asked.status} ${asked.text}")
+        }
+        answeredBy(wallet, "${username} signs in to ${name}") {
+            Map step = page.exchange("POST", "/dsmWalletSignIn/answer", "", "application/x-www-form-urlencoded")
+            if (step.json?.state in ["DECLINED", "FAILED", "NO_SEAT"]) {
+                throw new IllegalStateException("${username} could not sign in to ${name}: ${step.json}")
+            }
+            step.json?.state == "SIGNED_IN" ? step : null
+        }
+        return apiSession(page)
+    }
+
+    /** The API session that carries the page's signed-in cookie. */
+    private Session apiSession(Session page) {
+        Session api = new Session(baseUrl)
+        api.cookie = page.cookie
+        return api
+    }
+
+    /** `step` is polled while `wallet` answers what waits on its phone, until `step` gives something. */
+    private static void answeredBy(DsmTestHost wallet, String what, Closure step) {
+        java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean(false)
+        Thread answers = wallet.answeringRequests(done)
+        try {
+            wallet.until(what) { step() }
+        } finally {
+            done.set(true)
+            answers.join()
+        }
     }
 
     /** One HTTP answer: `status`, `text`, and `json` when the body parsed. */

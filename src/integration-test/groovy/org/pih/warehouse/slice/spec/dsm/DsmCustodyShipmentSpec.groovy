@@ -2,6 +2,7 @@ package org.pih.warehouse.slice.spec.dsm
 
 import com.google.protobuf.ByteString
 import dsm.types.proto.ConnectAppOfferRequestV1
+import dsm.types.proto.Envelope
 import dsm.types.proto.ConnectAppOfferV1
 import dsm.types.proto.ConnectCapV1
 import dsm.types.proto.ConnectReplyV1
@@ -39,6 +40,8 @@ import org.pih.warehouse.dsm.DsmAdmission
 import org.pih.warehouse.dsm.DsmCustodyException
 import org.pih.warehouse.dsm.DsmCustodyService
 import org.pih.warehouse.dsm.DsmCustodyTransfer
+import org.pih.warehouse.dsm.DsmHostClient
+import org.pih.warehouse.dsm.DsmHostException
 import org.pih.warehouse.dsm.DsmHostClient
 import org.pih.warehouse.dsm.DsmWarehouseAccount
 import org.pih.warehouse.inventory.InventoryItem
@@ -82,8 +85,8 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
     static final int UNITS_INTERNAL_SHIPMENT = 6
     static final int UNITS_CONSUMED = 4
     static final int UNITS_FROM_SUPPLIER = 3
-    static final String OTHER_OPERATOR = "registry-operator-2"
-    static final String OTHER_OPERATOR_PASSWORD = "second-operator-password"
+    /** The second registry operator: a seat holder, signed in with a wallet of their own; the username a seat makes. */
+    static final String OTHER_OPERATOR = "second.operator"
 
     @Autowired
     DsmCustodyService dsmCustodyService
@@ -121,6 +124,10 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
     @Shared DsmTestHost hostA
     @Shared DsmTestHost hostA2
     @Shared DsmTestHost hostB
+    /** Owners' and an operator's wallets: hosts standing in for phones. Nobody has a password. */
+    @Shared DsmTestHost hostRegistryOwner
+    @Shared DsmTestHost hostBOwner
+    @Shared DsmTestHost hostOperator2
     @Shared DsmTestOpenBoxes registryInstance
     @Shared DsmTestOpenBoxes orgBInstance
     @Shared DsmTestOpenBoxes.Session registry
@@ -162,14 +169,20 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
         hostA = DsmTestHost.start("warehouse-a", orgARoot, fleet.envConfig)
         hostA2 = DsmTestHost.start("warehouse-a2", orgARoot, fleet.envConfig)
         hostB = DsmTestHost.start("warehouse-b", orgBRoot, fleet.envConfig)
-        // ERA for the fee a token's creation burns, and for what the accounts' admissions cost.
-        [hostRegistry, hostA, hostA2, hostB].each { DsmTestHost host -> host.claimFaucet() }
-        registryInstance = DsmTestOpenBoxes.start("registry-openboxes", registryRoot)
-        orgBInstance = DsmTestOpenBoxes.start("org-b-openboxes", orgBRoot)
+        hostRegistryOwner = DsmTestHost.start("registry-owner-wallet", registryRoot, fleet.envConfig)
+        hostBOwner = DsmTestHost.start("org-b-owner-wallet", orgBRoot, fleet.envConfig)
+        hostOperator2 = DsmTestHost.start("registry-operator-wallet", registryRoot, fleet.envConfig)
+        // ERA for the fee a token's creation burns, and for what the accounts' admissions cost; the registry owner's
+        // wallet mints the seat token its operators hold.
+        [hostRegistry, hostA, hostA2, hostB, hostRegistryOwner].each { DsmTestHost host -> host.claimFaucet() }
+        // Each instance is started with its host. On first run nobody can sign in: the first wallet to connect through
+        // the sign-in page's code and sign the owner statement owns it, and that session is the owner's.
+        registryInstance = DsmTestOpenBoxes.start("registry-openboxes", registryRoot, hostRegistry, "Product registry")
+        orgBInstance = DsmTestOpenBoxes.start("org-b-openboxes", orgBRoot, hostB)
         registryInstance.awaitUp()
         orgBInstance.awaitUp()
-        registry = registryInstance.session("admin", "password")
-        orgB = orgBInstance.session("admin", "password")
+        registry = registryInstance.claim(hostRegistryOwner)
+        orgB = orgBInstance.claim(hostBOwner)
     }
 
     void setup() {
@@ -189,6 +202,9 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
         // store while it runs.
         orgBInstance?.close()
         registryInstance?.close()
+        hostOperator2?.close()
+        hostBOwner?.close()
+        hostRegistryOwner?.close()
         hostB?.close()
         hostA2?.close()
         hostA?.close()
@@ -197,16 +213,14 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
     }
 
     void 'the registry, on its own instance, issues a very large fixed supply: capacity to admit, none of it stock'() {
-        given: 'a second operator and a product on the registry\'s own instance'
+        given: 'a second operator, seated by the owner, and a product on the registry\'s own instance'
         Map category = registry.postJson("/generic/category/", [name: "Registered products"]) as Map
         Map registered = createProduct(registry, "Oral rehydration salts", productCode(), category.id as String)
         registryProductId = registered.id
-        createOperator(registry)
-        secondOperator = registryInstance.session(OTHER_OPERATOR, OTHER_OPERATOR_PASSWORD)
+        secondOperator = seatedOperator()
 
-        when:
-        Map account = registry.post("/dsm/accounts/registries", [label: "Product registry",
-                ingressOrigin: hostRegistry.ingressOrigin, dataDir: hostRegistry.dataDir.canonicalPath]) as Map
+        when: 'the registry account was made on first run, when its owner claimed the instance'
+        Map account = (registry.get("/dsm/accounts") as List<Map>).first()
         registryAccountId = account.id
         Map token = registry.post("/dsm/tokens", [productId: registeredProductId()]) as Map
         ticker = token.ticker
@@ -259,7 +273,8 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
         when:
         Map accountA = api("registerWarehouse", [locationId: warehouseA.id, ingressOrigin: hostA.ingressOrigin, dataDir: hostA.dataDir.canonicalPath])
         Map accountA2 = api("registerWarehouse", [locationId: warehouseA2.id, ingressOrigin: hostA2.ingressOrigin, dataDir: hostA2.dataDir.canonicalPath])
-        Map accountB = orgB.post("/dsm/accounts/warehouses", [locationId: warehouseBAtBId, ingressOrigin: hostB.ingressOrigin, dataDir: hostB.dataDir.canonicalPath]) as Map
+        // B's account was made on first run, for its default warehouse, when its owner claimed the instance.
+        Map accountB = (orgB.get("/dsm/accounts") as List<Map>).first()
         accountAId = accountA.id
         accountA2Id = accountA2.id
         accountBId = accountB.id
@@ -835,34 +850,66 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
         return "R" + String.format("%07d", new Random().nextInt(10_000_000))
     }
 
-    /** A second superuser on the registry's own instance, through its own generic API. */
-    private void createOperator(DsmTestOpenBoxes.Session admin) {
-        // Users change only through their own flow: the generic API refuses them.
-        Map form = [
-                username       : OTHER_OPERATOR,
-                password       : OTHER_OPERATOR_PASSWORD,
-                passwordConfirm: OTHER_OPERATOR_PASSWORD,
-                firstName      : "Second",
-                lastName       : "Operator",
-                email          : "second.operator@example.com",
-                active         : "true",
-                roles          : "ff80818162d9f9cc0162d9fc1c220003",
-        ]
-        String body = form.collect { key, value -> "${URLEncoder.encode(key as String, "UTF-8")}=${URLEncoder.encode(value as String, "UTF-8")}" }.join("&") + "&roles=5"
-        DsmTestOpenBoxes.Session page = new DsmTestOpenBoxes.Session((admin.baseUrl as String) - "/api")
-        page.cookie = admin.cookie
-        Map answer = page.exchange("POST", "/user/save", body, "application/x-www-form-urlencoded")
-        // It redirects to the new user's page. Anything else showed the form again, with what was wrong.
-        if ((answer.status as int) != 302) {
-            String shown = (answer.text as String).readLines().findAll { String line -> line.contains("error") || line.contains("must") || line.contains("invalid") }.take(12).join(" ")
-            throw new IllegalStateException("the second operator was not created: ${answer.status} ${shown.take(900)}")
+    /**
+     * A second registry operator with no password: the owner's wallet mints a seat token and the instance roots it as
+     * a level, the owner's wallet releases seats to the account, the operator's wallet connects as a person, the owner
+     * assigns them a seat, and the operator signs in by approving on their wallet. Every step is what a person does.
+     */
+    private DsmTestOpenBoxes.Session seatedOperator() {
+        DsmTestOpenBoxes.Session site = new DsmTestOpenBoxes.Session(registryInstance.siteUrl)
+        site.cookie = registry.cookie
+        Closure<Map> state = { (site.exchange("GET", "/dsmWallet/state", null, null).json as Map).data as Map }
+        String me = (state().me as Map).id
+
+        dsm.types.proto.TokenCreateResponse minted = DsmHostClient.expect("token.create",
+                hostRegistryOwner.client.invoke("token.create", dsm.types.proto.TokenCreateRequest.newBuilder()
+                        .setTicker("RGSEAT").setAlias("RGSEAT").setDecimals(0).setGenesisSupplyEntered("5")
+                        .setBurnEnabled(true).setTransferable(true).setThreshold(1).build()),
+                Envelope.PayloadCase.TOKEN_CREATE_RESPONSE).tokenCreateResponse
+        assert minted.success: "the seat token was not minted: ${minted.message}"
+        String anchor = Base32Crockford.encode(minted.policyAnchor.toByteArray())
+        Map level = (site.post("/dsmWallet/addLevel", [name: "Operator", roleType: "ROLE_ADMIN", policyAnchor: anchor, creatorId: me]) as Map)
+        site.post("/dsmWallet/requestSeats", [levelId: level.id, quantity: "2"])
+        answeredBy(hostRegistryOwner, "two seats reach the registry's account") {
+            ((state().levels as List<Map>).first().spare as long) >= 1 ? true : null
         }
-        // A new user starts inactive, and an administrator turns them on.
-        String id = (answer.text as String).tokenize("/").last().tokenize("?").first()
-        Map activated = page.exchange("POST", "/user/update", "id=${id}&active=true&${body}", "application/x-www-form-urlencoded")
-        if ((activated.status as int) != 302) {
-            throw new IllegalStateException("the second operator was not activated: ${activated.status}")
+
+        Map offer = site.post("/dsmWallet/offer", [:]) as Map
+        hostOperator2.connectByCode(offer.code as String)
+        poll("the operator's wallet connects") {
+            (site.post("/dsmWallet/answered", [offerDigest: offer.offerDigest, purpose: "person"]) as Map).answered ? true : null
         }
+        String operatorDevice = Base32Crockford.encode(hostOperator2.deviceId()).take(8)
+        Map wallet = (state().wallets as List<Map>).find { Map w -> w.deviceId == operatorDevice }
+        site.post("/dsmWallet/assignSeat", [levelId: level.id, walletId: wallet.id, locationId: "1", firstName: "Second", lastName: "Operator"])
+        return registryInstance.signIn(OTHER_OPERATOR, hostOperator2)
+    }
+
+    /** `probe` while `wallet` answers what waits on its phone, until `probe` gives something. */
+    private static void answeredBy(DsmTestHost wallet, String what, Closure probe) {
+        java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean(false)
+        Thread answers = wallet.answeringRequests(done)
+        try {
+            poll(what, probe)
+        } finally {
+            done.set(true)
+            answers.join()
+        }
+    }
+
+    private static void poll(String what, Closure probe) {
+        long deadline = System.currentTimeMillis() + 240_000L
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                if (probe() != null) {
+                    return
+                }
+            } catch (DsmHostException | org.pih.warehouse.dsm.DsmCustodyException | IllegalStateException notYet) {
+                // settling: the next round looks again
+            }
+            Thread.sleep(3_000L)
+        }
+        throw new IllegalStateException("not within 240 s: ${what}")
     }
 
     private static Map createProduct(DsmTestOpenBoxes.Session session, String name, String code, String categoryId) {

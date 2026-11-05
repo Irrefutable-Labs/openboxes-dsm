@@ -13,7 +13,7 @@ operational application. Synchronizing OpenBoxes is never what settles anything.
 | --- | --- |
 | Wallet connect | Built; *measured* |
 | Phone sign-in by a signature over the words shown, naming the person and a code the asking browser shows | Built; *measured*: of two browsers asking for one person, approving one signed in only that one, and declining the other left it out. The wallet is DSM Amendment A28, branch `feat/connect-sign` |
-| Passwords, signup, API login and impersonation, once the organization has an owner | Refused for everyone; *measured* at Northgate. Lakeside has no owner yet, so these still work there |
+| Passwords, signup, API login and impersonation | Gone from this build (2026-11-04): there is no password path at all. A fresh installation is claimed on the sign-in page by the first wallet to connect and sign the owner statement, bound to the installation's administrator account; everyone, the owner included, signs in with a wallet |
 | Capped seat token, release on phone approval, seat in a vault, revocation by the authority alone, reassignment | Built; *measured* |
 | Every request by a seat holder reads the vault from the storage nodes, with no timer or local copy | Built; *measured*: about 1.1 s per request, steady over 3 minutes, plus one 32 s request not explained |
 | Revocation | The holder's very next request gets 403 and the session ends, with no job running and nobody pressing anything; *measured*: that request took 21 s, because it also carries out the return. A new sign-in gets `NO_SEAT` |
@@ -217,7 +217,7 @@ carriers are their own organizations. Until the device tree is built, accountabi
   approves without reading can still sign in a browser they do not control. It proves the wallet's key signed after approval on
   that device, not who pressed. The signature is not saved or published, so sign-ins are not yet an auditable record.
 - **Whoever controls the host holds the account's keys,** and can publish a claim or lock a vault. Everything above stops someone with the database, not someone with the host.
-- **The first claim wins,** and it needs an administrator's session while passwords still work. Someone with the database before an owner exists can set that password and claim first. There is no way to transfer or revoke ownership, so a lost owner's wallet needs a new organization.
+- **The first claim wins.** A fresh installation's sign-in page offers a connect code to anyone who reaches it until an owner exists, so the window between first start and the owner's claim is the installer's to keep short (the reset script claims within seconds of start). There is no way to transfer or revoke ownership, so a lost owner's wallet needs a new organization.
 - **Assigning a seat is signed by the account, not the person's wallet.** The vault's terms and the published record name who assigned it, but no phone approves it.
 - **Not attacked live:** a seat row pointing at a vault from another account or token, which the checks refuse by reading the code only.
 - **Custody under an owner has not run since these checks changed.** `DsmCustodyShipmentSpec` passes all 26 tests on real hosts and storage nodes, but with no owner, so it shows custody did not regress. Recording stock and sending a shipment under an owner last ran live just before them.
@@ -230,7 +230,7 @@ carriers are their own organizations. Until the device tree is built, accountabi
   to 120 s before it is refused, and seat holders cannot use OpenBoxes during it. Offline handoffs are a separate path that
   settles between devices and syncs afterwards, and are not built.
 - Roles from a seat are organization-wide. A seat names a location, but the role is not limited to it.
-- `seed.py` signs in with a password, so it cannot run against an organization that has an owner.
+- `seed.py` seeds through the owner's session that `setup.py` holds after the claim; it has no login of its own.
 - The reconciler compares totals. An edit that leaves a total unchanged (such as moving units between lots), an edit behind a
   stock count, and changes to lots, expiry dates, prices or permissions are invisible to it.
 - A finding's signature proves who said it, not that nothing was withheld: `authored.publish` has no completeness proof, and

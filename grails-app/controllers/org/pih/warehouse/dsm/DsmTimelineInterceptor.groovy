@@ -17,7 +17,7 @@ class DsmTimelineInterceptor {
 
     /** Plain words for the requests the story makes; anything else is named from its controller and action. */
     private static final Map<String, String> LABELS = [
-            "auth.login"                    : "Password login page: retired once the owner claimed the organization with their wallet",
+            "auth.login"                    : "Password login page: there are no passwords here, it sends you to the wallet sign-in",
             "auth.logout"                   : "Signed out",
             "dsmWalletSignIn.index"         : "Sign-in page opened",
             "dsmWalletSignIn.ask"           : "Username entered; the phone is asked",

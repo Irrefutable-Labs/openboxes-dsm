@@ -1,6 +1,8 @@
 package org.pih.warehouse.dsm
 
 import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
 
@@ -78,12 +80,29 @@ class DsmHostClient {
     }
 
     Envelope invoke(String method, byte[] body) {
-        return router(method, body, Route.INVOKE, "/ingress")
+        return advancing { router(method, body, Route.INVOKE, "/ingress") }
     }
 
     /** A route that changes the account's state, run without being recorded: what a poll calls. */
     Envelope invokeQuietly(String method, Message body) {
-        return router(method, body.toByteArray(), Route.INVOKE, "/ingress/quiet")
+        return advancing { router(method, body.toByteArray(), Route.INVOKE, "/ingress/quiet") }
+    }
+
+    /**
+     * One state-changing call at a time per account. An operation is built on the account's latest position; two built
+     * at once from different requests of this server would race, and the loser is refused by DSM as built on a stale
+     * position. Reads are not held up.
+     */
+    private static final Map<String, ReentrantLock> ADVANCING = new ConcurrentHashMap<String, ReentrantLock>()
+
+    private Envelope advancing(Closure<Envelope> call) {
+        ReentrantLock lock = ADVANCING.computeIfAbsent(dataDir.canonicalPath, { String k -> new ReentrantLock(true) })
+        lock.lock()
+        try {
+            return call()
+        } finally {
+            lock.unlock()
+        }
     }
 
     /**

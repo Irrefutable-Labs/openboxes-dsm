@@ -41,19 +41,10 @@ class ApiController {
     def messageSource
     GitProperties gitProperties
 
+    /** There are no passwords in this build. A client signs in the way a browser does: dsmWalletSignIn/ask, then /answer. */
     def login() {
-        def username = request.JSON.username
-        def password = request.JSON.password
-        User named = User.findByUsernameOrEmail(username, username)
-        if (named && !dsmAuthorityService.ownerExists() && userService.authenticate(username, password)) {
-            session.user = named
-            if (request.JSON.location) {
-                session.warehouse = Location.get(request.JSON.location)
-            }
-            render([status: 200, text: "Authentication was successful"])
-            return
-        }
-        render([status: 401, text: "Authentication failed"])
+        response.status = 410
+        render([status: 410, text: "There are no passwords here. Sign in with your wallet: POST /dsmWalletSignIn/ask, then poll /dsmWalletSignIn/answer."])
     }
 
     def chooseLocation() {

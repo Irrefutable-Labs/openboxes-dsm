@@ -69,6 +69,16 @@ class DsmTestHost extends DsmTestProcess {
         return client.deviceId()
     }
 
+    /** Connect to an OpenBoxes instance through the code its page shows, as a person's wallet does by scanning it. */
+    void connectByCode(String code) {
+        dsm.types.proto.ConnectPreviewV1 preview = DsmSteps.reply(client.connect("connect.preview",
+                dsm.types.proto.ConnectPreviewRequestV1.newBuilder().setCode(code.trim()).build(), DsmHostClient.Route.QUERY),
+                dsm.types.proto.ConnectReplyV1.ReplyCase.PREVIEW, "connect.preview").preview
+        DsmSteps.reply(client.connect("connect.approve",
+                dsm.types.proto.ConnectApproveRequestV1.newBuilder().setOfferDigest(preview.offerDigest).build(), DsmHostClient.Route.INVOKE),
+                dsm.types.proto.ConnectReplyV1.ReplyCase.SESSION, "connect.approve")
+    }
+
     /**
      * Check this account's connected sessions and approve what waits, as a partner watching its wallet does, until `done`
      * says to stop. A request reaches a wallet only when it checks.

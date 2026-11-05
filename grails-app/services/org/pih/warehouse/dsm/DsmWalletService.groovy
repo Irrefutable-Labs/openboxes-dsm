@@ -24,6 +24,7 @@ import dsm.types.proto.EscrowVerdictState
 import dsm.types.proto.Envelope
 import grails.gorm.transactions.Transactional
 import org.pih.warehouse.core.Location
+import org.pih.warehouse.core.RoleType
 import org.pih.warehouse.core.User
 import org.pih.warehouse.dsm.DsmHostClient.Route
 
@@ -56,13 +57,69 @@ class DsmWalletService {
 
     // ------------------------------------------------------------------ connecting
 
+    /**
+     * The administrator account a fresh installation's owner is bound to when their wallet claims the organization: the
+     * oldest user holding an administrator role. OpenBoxes needs a user behind every session; the wallet is the login.
+     */
+    User firstAdministrator() {
+        User admin = User.list(sort: "dateCreated", order: "asc").find { User u ->
+            u.roles?.any { it.roleType in [RoleType.ROLE_SUPERUSER, RoleType.ROLE_ADMIN] }
+        }
+        if (!admin) {
+            throw new DsmCustodyException("this installation has no administrator account to bind the owner to")
+        }
+        return admin
+    }
+
+    /**
+     * A fresh installation's account, made and funded on first run so the owner can be claimed: the server's own host,
+     * named in its configuration, for the installation's first warehouse. Nothing from a request decides any of it.
+     */
+    DsmWarehouseAccount firstRunAccount(String origin, String dataDir, String registryLabel) {
+        DsmWarehouseAccount home = DsmWarehouseAccount.count() ? homeAccount() : null
+        if (!home) {
+            if (!origin || !dataDir) {
+                throw new DsmCustodyException("this server was started without a DSM host, so nothing can be claimed")
+            }
+            if (registryLabel?.trim()) {
+                // a product registry's instance: release authority, no custody, and no warehouse account ever
+                home = dsmAccountService.registerRegistry(registryLabel.trim(), origin, dataDir)
+            } else {
+                Location warehouse = Location.list(sort: "dateCreated", order: "asc").find { Location l -> l.active && !l.parentLocation }
+                if (!warehouse) {
+                    throw new DsmCustodyException("this installation has no warehouse to attach a DSM account to")
+                }
+                home = dsmAccountService.registerAccount(warehouse, origin, dataDir)
+            }
+        }
+        try {
+            dsmAccountService.claimNetworkFees(home)
+        } catch (DsmHostException | DsmCustodyException busy) {
+            // the network's faucet answers "retry later" while others claim; the next look at this page tries again
+            log.info("first run: network fees not claimed yet: ${busy.message}")
+        }
+        return home
+    }
+
     /** The account people connect to: the first warehouse account this organization registered. */
     DsmWarehouseAccount homeAccount() {
         DsmWarehouseAccount home = DsmWarehouseAccount.findAllByLocationIsNotNull([sort: "dateCreated", order: "asc", max: 1])[0]
+                ?: DsmWarehouseAccount.findAllByRegistry(true, [sort: "dateCreated", order: "asc", max: 1])[0]
         if (!home) {
             throw new DsmCustodyException("this organization has no DSM account yet")
         }
         return home
+    }
+
+    /** What this organization is called in the words a wallet signs: its warehouse, or a registry's label. */
+    String homeName() {
+        DsmWarehouseAccount home = homeAccount()
+        return home.location?.name ?: home.label
+    }
+
+    /** Where an owner's session stands: the home warehouse, or on a registry's instance the installation's first location. */
+    Location homeLocation() {
+        return homeAccount().location ?: Location.list(sort: "dateCreated", order: "asc").find { Location l -> l.active && !l.parentLocation }
     }
 
     /** A connect code for a person's wallet to scan. */
@@ -120,7 +177,7 @@ class DsmWalletService {
         }
         String device = Base32Crockford.encode(held.peerDeviceId.toByteArray())
         if (!asked) {
-            String statement = "I own ${homeAccount().location.name} on DSM. Account ${dsmAuthorityService.hostDevice()}. Wallet ${device}. User ${administrator.username}.".toString()
+            String statement = "I own ${homeName()} on DSM. Account ${dsmAuthorityService.hostDevice()}. Wallet ${device}. User ${administrator.username}.".toString()
             return [asked: [seq: askToSign(wallet, statement), statement: statement]]
         }
         Map answer = signatureAnswer(wallet, asked.seq as long, asked.statement as String)
@@ -161,7 +218,7 @@ class DsmWalletService {
             return null
         }
         return [user: wallet.user, device: device, genesis: genesis,
-                location: authority.owner ? homeAccount().location : authority.seats.first().location]
+                location: authority.owner ? homeLocation() : authority.seats.first().location]
     }
 
     /**
@@ -181,7 +238,7 @@ class DsmWalletService {
         if (!reserveSignInAsk(wallet.id, client)) {
             return null
         }
-        String statement = "Sign in to ${homeAccount().location.name} as ${user.username}. Browser code ${code}.".toString()
+        String statement = "Sign in to ${homeName()} as ${user.username}. Browser code ${code}.".toString()
         return [walletId: wallet.id, seq: askToSign(wallet, statement), statement: statement]
     }
 

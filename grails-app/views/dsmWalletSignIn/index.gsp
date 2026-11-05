@@ -37,7 +37,22 @@
     <g:if test="${params.refused == 'seat'}">
         <div class="refused">Refused. Your seat is no longer standing on DSM. Nobody edited your account: the owner revoked it from their own wallet.</div>
     </g:if>
-    <div class="card">
+    <g:if test="${noOwner}">
+    <div class="card qr" id="claim">
+        <h1>Claim this organization</h1>
+        <p>Nobody owns it yet. The first wallet to connect and sign becomes its owner. There are no passwords here, and no way to set one.</p>
+        <g:if test="${code}">
+            <img src="${createLink(action: 'qr')}" alt="Connect code"/>
+            <ol>
+                <li>Open your DSM wallet and go to <strong>Apps</strong>.</li>
+                <li>Tap <strong>Scan code</strong> and scan this.</li>
+                <li>Read what it asks for, then <strong>Approve</strong>, and approve the owner statement it asks you to sign next.</li>
+            </ol>
+        </g:if>
+        <div id="claim-state">Waiting for a wallet to connect.</div>
+    </div>
+    </g:if>
+    <div class="card" ${noOwner ? 'hidden' : ''}>
         <h1>Sign in</h1>
         <p>Your wallet is already connected here. Enter your username, then approve the request on your phone.</p>
         <form id="ask">
@@ -64,10 +79,26 @@
             <p class="failed">${failure}</p>
         </g:else>
     </div>
-    <p style="text-align:center"><g:link controller="auth" action="login">Sign in with a password instead</g:link></p>
 </main>
 <script>
     (function () {
+        var claimState = document.getElementById('claim-state');
+        if (claimState) {
+            var claimUrl = '${createLink(action: 'claim')}';
+            function pollClaim() {
+                fetch(claimUrl, { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (s) {
+                        if (s.state === 'SIGNED_IN') { claimState.textContent = 'You own this organization now. Signing you in.'; window.location = s.redirect; return; }
+                        if (s.state === 'OWNED') { claimState.textContent = 'Someone else just claimed it.'; setTimeout(function () { window.location.reload(); }, 3000); return; }
+                        if (s.state === 'ASKED') claimState.textContent = 'Your wallet is connected. Approve the owner statement on your phone: Apps, Waiting.';
+                        if (s.state === 'FAILED') claimState.textContent = s.reason;
+                        setTimeout(pollClaim, 3000);
+                    })
+                    .catch(function () { setTimeout(pollClaim, 4000); });
+            }
+            pollClaim();
+        }
         var asked = document.getElementById('asked');
         var next = '${(next ?: '').encodeAsJavaScript()}';
         var answerUrl = '${createLink(action: 'answer')}' + (next ? '?next=' + encodeURIComponent(next) : '');
