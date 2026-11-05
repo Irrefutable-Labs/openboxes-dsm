@@ -1,14 +1,18 @@
-// The demo's dashboard: the tiles that move with two products and one shipment. Installed by openboxes.sh as
-// ~/.grails/openboxes-config.groovy when that file does not exist; OpenBoxes reads it at start.
+// The demo's dashboard: only tiles whose figures come from the demo's own data and change as the story goes. Installed
+// by openboxes.sh as ~/.grails/openboxes-config.groovy when that file does not exist; OpenBoxes reads it at start.
 //
-// Left out on purpose: "incoming" and "outgoing stock movements" count movements still in progress (created, picking,
-// pending receipt) at this warehouse, and the demo's shipment is created, picked and sent in one step and received
-// minutes later, so those tiles stay at zero while stock plainly moves. "Sent" and "received stock movements" count
-// what actually shipped and arrived, by month, and move with the story.
+// Measured at Northgate after a full run: lot-and-bin count 2 (1 before the 500 boxes), inventory value $8,432 (up at
+// the goods-received note, down when 120 ship, up $736 at the database edit and back at the correction), inventory
+// summary 2 in stock, stock movements sent 1 to Lakeside, products inventoried 100% within three months.
+//
+// Left out, with why: "incoming" and "outgoing stock movements" count movements still in progress and the demo's
+// shipment is sent in one step; "received by month" is zero at Northgate, which sends; "expiration summary" has no
+// lot within its horizon (the demo's lots expire in 2028); receiving bin, putaways, delayed, discrepancies, fill rate,
+// stock-outs, purchase orders and requests have nothing in this story.
 openboxes.dashboardConfig.dashboards.mainDashboard.personal.widgets = [
         [widgetId: "inventoryByLotAndBin", order: 1],
+        [widgetId: "inventoryValue", order: 2],
         [widgetId: "inventorySummary", order: 1],
         [widgetId: "sentStockMovements", order: 2],
-        [widgetId: "receivedStockMovements", order: 3],
-        [widgetId: "expirationSummary", order: 4],
+        [widgetId: "productsInventoried", order: 3],
 ]
