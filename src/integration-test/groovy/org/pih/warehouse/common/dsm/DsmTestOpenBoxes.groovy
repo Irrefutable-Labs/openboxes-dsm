@@ -93,7 +93,14 @@ class DsmTestOpenBoxes extends DsmTestProcess {
      */
     Session claim(DsmTestHost wallet) {
         Session page = new Session(siteUrl)
-        Map offered = page.exchange("GET", "/dsmWalletSignIn/claim", null, null)
+        // The page wants the one-time setup code the server wrote to its data root, which the installer alone can read.
+        page.exchange("GET", "/dsmWalletSignIn/index", null, null)
+        File setupCode = new File(dataRoot, "setup-code")
+        long deadline = System.currentTimeMillis() + 20000L
+        while (!setupCode.exists() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(500L)
+        }
+        Map offered = page.exchange("GET", "/dsmWalletSignIn/claim?setup=${URLEncoder.encode(setupCode.text.trim(), "UTF-8")}", null, null)
         if (offered.status != 200 || !offered.json?.code) {
             throw new IllegalStateException("${name} offers no code to claim it: ${offered.status} ${offered.text}")
         }

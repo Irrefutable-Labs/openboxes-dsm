@@ -21,6 +21,7 @@ class DsmTimelineInterceptor {
             "auth.logout"                   : "Signed out",
             "dsmWalletSignIn.index"         : "Sign-in page opened",
             "dsmWalletSignIn.ask"           : "Username entered; the phone is asked",
+            "dsmWalletSignIn.claim"         : "First run: the owner's wallet claims this organization, with the server's setup code",
             "dashboard.index"               : "Dashboard opened",
             "inventory.browse"              : "Browse inventory",
             "inventoryItem.showStockCard"   : "Stock card opened",

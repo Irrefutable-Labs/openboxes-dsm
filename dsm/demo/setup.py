@@ -218,8 +218,29 @@ class Org:
 
     def claim(self, phone):
         """The first run: this wallet connects through the sign-in page's code and signs the owner statement. The session
-        this client holds is the owner's afterwards. There is no password anywhere."""
-        code = self.call("/dsmWalletSignIn/claim")
+        this client holds is the owner's afterwards. There is no password anywhere: the page wants the one-time setup code
+        the server wrote to its data root, which only whoever runs the server can read, as this script does here."""
+        self.call("/dsmWalletSignIn/index", raw=True)
+        # The gate, proven each reset: without the code a stranger's browser is offered nothing and the claim route refuses.
+        page = self.call("/dsmWalletSignIn/index", raw=True)
+        if 'id="setup"' not in page or "Scan code" in page:
+            raise SystemExit("the sign-in page offered a claim without the setup code")
+        for wrong in ("", "?setup=NOTTHECODE00"):
+            try:
+                urllib.request.urlopen(urllib.request.Request(self.base + "/dsmWalletSignIn/claim" + wrong, headers={"Accept": "application/json"}), timeout=60)
+                raise SystemExit("the claim route answered without the setup code")
+            except urllib.error.HTTPError as refused:
+                if refused.code != 403:
+                    raise SystemExit("the claim route answered %d without the setup code" % refused.code)
+        say("  the claim is gated: refused without the setup code")
+        setup_file = HERE + "/run/org-" + ("a" if self.base.endswith(":8081/openboxes") else "b") + "/setup-code"
+        for _ in range(20):
+            if os.path.exists(setup_file):
+                break
+            time.sleep(1)
+        with open(setup_file) as f:
+            setup = f.read().strip()
+        code = self.call("/dsmWalletSignIn/claim?setup=" + urllib.parse.quote(setup))
         phone.connect(code["code"])
         asked = False
         for _ in range(60):

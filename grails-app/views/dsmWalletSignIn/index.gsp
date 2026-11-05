@@ -37,7 +37,19 @@
     <g:if test="${params.refused == 'seat'}">
         <div class="refused">Refused. Your seat is no longer standing on DSM. Nobody edited your account: the owner revoked it from their own wallet.</div>
     </g:if>
-    <g:if test="${noOwner}">
+    <g:if test="${noOwner && setupNeeded}">
+    <div class="card" id="setup">
+        <h1>Claim this organization</h1>
+        <p>Nobody owns it yet. There are no passwords here, and no way to set one. To claim it, enter the setup code: the server wrote it to the file <strong>setup-code</strong> in its DSM data root, where only whoever runs the server can read it.</p>
+        <form method="get" action="${createLink(action: 'index')}">
+            <label for="setup-code">Setup code</label>
+            <input id="setup-code" name="setup" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="from the server's setup-code file" />
+            <button type="submit">Continue</button>
+        </form>
+        <g:if test="${failure}"><p class="failed">${failure}</p></g:if>
+    </div>
+    </g:if>
+    <g:if test="${noOwner && !setupNeeded}">
     <div class="card qr" id="claim">
         <h1>Claim this organization</h1>
         <p>Nobody owns it yet. The first wallet to connect and sign becomes its owner. There are no passwords here, and no way to set one.</p>
@@ -62,6 +74,7 @@
         </form>
         <div id="asked"></div>
     </div>
+    <g:if test="${!noOwner}">
     <hr/>
     <div class="card qr">
         <h1>New here?</h1>
@@ -79,6 +92,7 @@
             <p class="failed">${failure}</p>
         </g:else>
     </div>
+    </g:if>
 </main>
 <script>
     (function () {

@@ -34,6 +34,11 @@ class DsmWalletSignInController {
         }
         try {
             boolean noOwner = !dsmAuthorityService.ownerExists()
+            if (noOwner && !setupGiven()) {
+                // Nothing is offered to anyone until the installer gives the setup code from the server's data root.
+                return [code: null, failure: params.setup ? "That setup code does not match." : null,
+                        next: sensible(session.targetUri as String), noOwner: true, setupNeeded: true]
+            }
             if (noOwner) {
                 dsmWalletService.firstRunAccount(grailsApplication.config.getProperty("openboxes.dsm.host.origin", String),
                         grailsApplication.config.getProperty("openboxes.dsm.host.dataDir", String),
@@ -57,6 +62,11 @@ class DsmWalletSignInController {
         try {
             if (dsmAuthorityService.ownerExists()) {
                 render([state: "OWNED"] as JSON)
+                return
+            }
+            if (!setupGiven()) {
+                response.status = 403
+                render([state: "FAILED", reason: "the setup code was not given: it is in the file setup-code in the server's DSM data root"] as JSON)
                 return
             }
             if (!session.dsmOfferDigest) {
@@ -84,6 +94,21 @@ class DsmWalletSignInController {
         } catch (DsmCustodyException | DsmHostException refused) {
             render([state: "FAILED", reason: refused.message] as JSON)
         }
+    }
+
+    /**
+     * Whether this browser has given the one-time setup code (`?setup=`), remembered for the session. It is made by the
+     * server and readable only by whoever runs it, so the first claim stays with the installer.
+     */
+    private boolean setupGiven() {
+        if (session.dsmSetupGiven) {
+            return true
+        }
+        if (dsmWalletService.setupCodeGiven(params.setup as String)) {
+            session.dsmSetupGiven = true
+            return true
+        }
+        return false
     }
 
     /** The current code as a QR image. */

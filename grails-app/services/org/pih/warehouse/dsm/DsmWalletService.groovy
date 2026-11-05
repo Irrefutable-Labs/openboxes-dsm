@@ -22,7 +22,14 @@ import dsm.types.proto.EscrowVerdictRequest
 import dsm.types.proto.EscrowVerdictResponse
 import dsm.types.proto.EscrowVerdictState
 import dsm.types.proto.Envelope
+import grails.core.GrailsApplication
 import grails.gorm.transactions.Transactional
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.PosixFilePermissions
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.concurrent.locks.ReentrantLock
 import org.pih.warehouse.core.Location
 import org.pih.warehouse.core.RoleType
 import org.pih.warehouse.core.User
@@ -52,8 +59,17 @@ class DsmWalletService {
     private static final Map<String, Long> SIGN_IN_LAST_BY_CLIENT = new HashMap<String, Long>()
     private static final Map<String, List<Long>> SIGN_IN_RECENT_BY_WALLET = new HashMap<String, List<Long>>()
 
+    /** One owner claim at a time: the first to publish wins, and the second sees it. */
+    private static final ReentrantLock CLAIM = new ReentrantLock()
+    /** The one-time setup code's file, in the data root, readable only by the account the server runs as. */
+    private static final String SETUP_CODE_FILE = "setup-code"
+    private static final String SETUP_CODE_LETTERS = "23456789ABCDEFGHJKMNPQRSTVWXYZ"
+    private static final int SETUP_CODE_LENGTH = 12
+    private static final SecureRandom RANDOM = new SecureRandom()
+
     DsmAccountService dsmAccountService
     DsmAuthorityService dsmAuthorityService
+    GrailsApplication grailsApplication
 
     // ------------------------------------------------------------------ connecting
 
@@ -153,6 +169,56 @@ class DsmWalletService {
         return wallet
     }
 
+    // ------------------------------------------------------------------ the first run's setup code
+
+    /** Where the setup code lives: the DSM data root (`openboxes.dsm.dataRoot`), which only the server's operator can read. */
+    File setupCodeFile() {
+        String root = grailsApplication.config.getProperty("openboxes.dsm.dataRoot", String) ?:
+                grailsApplication.config.getProperty("openboxes.dsm.host.dataDir", String)
+        if (!root) {
+            throw new DsmCustodyException("openboxes.dsm.dataRoot is not configured: there is nowhere to keep the setup code")
+        }
+        return new File(root, SETUP_CODE_FILE)
+    }
+
+    /**
+     * The one-time setup code a fresh installation's claim page requires. Made on first need and written to the data
+     * root with permissions 0600, so only whoever runs the server can read it: the claim page is reachable by anyone
+     * until an owner exists, and the code keeps the claim with the installer. Deleted once the owner's claim is published.
+     */
+    String setupCode() {
+        File file = setupCodeFile()
+        CLAIM.lock()
+        try {
+            if (!file.exists()) {
+                file.parentFile?.mkdirs()
+                String code = (1..SETUP_CODE_LENGTH).collect { SETUP_CODE_LETTERS[RANDOM.nextInt(SETUP_CODE_LETTERS.length())] }.join("")
+                try {
+                    Set<PosixFilePermission> ownerOnly = PosixFilePermissions.fromString("rw-------")
+                    Files.createFile(file.toPath(), PosixFilePermissions.asFileAttribute(ownerOnly))
+                    Files.setPosixFilePermissions(file.toPath(), ownerOnly)
+                } catch (UnsupportedOperationException noPosix) {
+                    file.createNewFile()
+                    file.setReadable(false, false); file.setReadable(true, true)
+                    file.setWritable(false, false); file.setWritable(true, true)
+                }
+                file.text = code + "\n"
+                log.warn("no owner yet: the setup code for the first claim is in ${file.canonicalPath}")
+            }
+            return file.text.trim()
+        } finally {
+            CLAIM.unlock()
+        }
+    }
+
+    /** Whether `given` is the setup code, compared in constant time. Nothing without an owner proceeds until it is. */
+    boolean setupCodeGiven(String given) {
+        if (!given?.trim()) {
+            return false
+        }
+        return MessageDigest.isEqual(setupCode().getBytes("UTF-8"), given.trim().toUpperCase().getBytes("UTF-8"))
+    }
+
     /**
      * The first wallet an administrator connects becomes the organization's owner, once it has signed that on its own phone
      * and this account has published the claim. Called again as the browser waits: `asked` is what the last call returned.
@@ -160,6 +226,15 @@ class DsmWalletService {
      * @return `owner` once the claim is published, with the proven `device` and `genesis`; otherwise what was asked, if anything
      */
     Map claimOwnership(String offerDigest, User administrator, Map asked) {
+        CLAIM.lock()
+        try {
+            return claimOwnershipLocked(offerDigest, administrator, asked)
+        } finally {
+            CLAIM.unlock()
+        }
+    }
+
+    private Map claimOwnershipLocked(String offerDigest, User administrator, Map asked) {
         DsmWallet wallet = walletAnswering(offerDigest)
         Map<String, String> claim = dsmAuthorityService.ownerClaim()
         if (claim) {
@@ -196,6 +271,11 @@ class DsmWalletService {
         ], answer.body as byte[], answer.signature as byte[])
         wallet.user = administrator
         wallet.save(failOnError: true, flush: true)
+        try {
+            setupCodeFile().delete()
+        } catch (DsmCustodyException | SecurityException ignored) {
+            // the code served its one purpose; the owner's claim now refuses every later claim on its own
+        }
         return [owner: true, device: device, genesis: wallet.genesis]
     }
 
