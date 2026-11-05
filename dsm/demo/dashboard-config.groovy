@@ -3,7 +3,7 @@
 //
 // Measured at Northgate after a full run: lot-and-bin count 2 (1 before the 500 boxes), inventory value $8,432 (up at
 // the goods-received note, down when 120 ship, up $736 at the database edit and back at the correction), inventory
-// summary 2 in stock, stock movements sent 1 to Lakeside, products inventoried 100% within three months.
+// summary 2 in stock, stock movements sent 1 to Lakeside.
 //
 // Left out, with why: "incoming" and "outgoing stock movements" count movements still in progress and the demo's
 // shipment is sent in one step; "received by month" is zero at Northgate, which sends; "expiration summary" has no
@@ -14,5 +14,4 @@ openboxes.dashboardConfig.dashboards.mainDashboard.personal.widgets = [
         [widgetId: "inventoryValue", order: 2],
         [widgetId: "inventorySummary", order: 1],
         [widgetId: "sentStockMovements", order: 2],
-        [widgetId: "productsInventoried", order: 3],
 ]
