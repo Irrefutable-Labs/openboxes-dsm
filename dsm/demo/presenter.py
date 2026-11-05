@@ -18,10 +18,10 @@ PHONES = {"northgate": "RFGYB0PQ8XK", "priya": "RFGYB0PQ9FF", "carrier": "R5CW62
 # title, what the ordinary system does, what DSM does, which phone to show
 SCENES = [
     ("Northgate Medical ships medicines to Lakeside District Hospital",
-     "This is our build of OpenBoxes, the open-source warehouse system used in hospitals and supply chains. Same screens, same daily work: receiving, shipping, counting.",
-     "What is new sits underneath: DSM, a ledger kept on independent storage nodes, decides who may act and who holds which goods. Every figure in this demo is a real entry on those nodes, not a simulation.", None),
+     "This is the DSM version of OpenBoxes, the open-source warehouse system used in hospitals and supply chains. Same screens, same daily work: receiving, shipping, counting.",
+     "DSM is our ledger, kept on independent storage nodes. Underneath OpenBoxes it decides who may act and who holds which goods, as it can for any system that keeps books on things of value. Every figure in this demo is a real entry on those nodes.", None),
     ("No passwords. Marcus, Northgate's owner, signs in with his phone",
-     "In this build, password login is switched off as soon as an organization has an owner. Nobody here has a password on file, so there is nothing to phish, leak or reset.",
+     "In the DSM version, password login is switched off as soon as an organization has an owner. Nobody here has a password on file, so there is nothing to phish, leak or reset.",
      "The login is a signature. Marcus's phone wallet shows him a sentence naming this browser's one-time code; approving it signs that sentence with his key. Only this browser gets in, and the signature cannot be replayed.", "northgate"),
     ("Marcus gives Priya a seat as warehouse manager",
      "Normally access is a role ticked in a user record: any administrator can change it, and nobody can audit it afterwards.",
@@ -57,8 +57,8 @@ SCENES = [
      "An adjustment transaction brings the books back to the truth, the same way a warehouse always corrects a count.",
      "The finding stays on the record, and the correction is signed with who made it and why. History is added to, never rewritten.", None),
     ("What DSM adds to the warehouse system people already use",
-     "OpenBoxes keeps running the warehouse.",
-     "No passwords. Seats that can be counted and revoked. Custody two companies can verify without trusting each other. Books that cannot quietly drift.", None),
+     "OpenBoxes keeps running the warehouse, unchanged for the people who use it.",
+     "No passwords. Seats that can be counted and revoked. Custody two companies can verify without trusting each other. Books that cannot quietly drift. DSM did that here without changing how anyone works; it does the same for any system that keeps books on things of value.", None),
 ]
 
 # Scenes that happen on the phone: its screen is shown large, the page behind it dimmed.

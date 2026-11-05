@@ -13,9 +13,11 @@ Before the first scene the screen shows Northgate's sign-in page with the story 
 
 **START: story bar reads 1 of 14, Northgate's sign-in page**
 
-This is OpenBoxes. It's open-source warehouse software, used in hospitals and supply chains in dozens of countries. What you're looking at is our build of it: the same screens, the same work, nothing about how people use it has changed.
+This is OpenBoxes. It's open-source warehouse software, used in hospitals and supply chains in dozens of countries. What you're looking at is the DSM version of it: the same screens, the same work, nothing about how people use it has changed.
 
-What has changed is who's in charge of the truth. Two organizations: Northgate Medical, a distributor, and Lakeside District Hospital. They run separate copies of OpenBoxes, with separate databases. And underneath both of them sits DSM.
+DSM is our company's ledger. It runs on independent storage nodes, and it answers two questions no database can answer honestly about itself: who is allowed to act, and who holds what. Today it's underneath OpenBoxes. It can sit underneath any system that keeps books on things of value.
+
+Two organizations: Northgate Medical, a distributor, and Lakeside District Hospital. They run separate copies of OpenBoxes, with separate databases. And underneath both of them sits DSM.
 
 Every amount you'll see move today is a real state change on live storage nodes. No test network, no mock. Four phones, four people.
 
@@ -23,7 +25,7 @@ Every amount you'll see move today is a real state change on live storage nodes.
 
 **START: story bar reads 2 of 14; the username field is spotlit and "marcus.hale" is being typed**
 
-Marcus Hale owns Northgate. Watch what he doesn't do: he doesn't type a password. In this build, password login is switched off the moment an organization has an owner. There is no password on file for Marcus, or for anyone here. Nothing to phish, nothing to leak, nothing to reset.
+Marcus Hale owns Northgate. Watch what he doesn't do: he doesn't type a password. In the DSM version, password login is switched off the moment an organization has an owner. There is no password on file for Marcus, or for anyone here. Nothing to phish, nothing to leak, nothing to reset.
 
 `[CUT: Marcus's phone appears, bottom left, showing the request to sign]`
 
@@ -179,4 +181,4 @@ Marcus brings the books back to the truth, and the finding stays on the record, 
 
 So: no passwords. Seats that can be counted and revoked. Custody that two companies can verify without trusting each other. And books that cannot quietly drift.
 
-Same OpenBoxes. Same screens. Same people. Different foundation.
+Same OpenBoxes. Same screens. Same people. DSM underneath. And what DSM did for a warehouse today, it does for any system that keeps books on things of value.
