@@ -53,9 +53,15 @@ class Phone:
 
     @property
     def serial(self):
-        # a serial may hold spaces (an mDNS name): the line is "serial<TAB>device"
-        return next(l.rsplit("\t", 1)[0] for l in sh("adb", "devices").splitlines()[1:]
-                    if "\t" in l and self.ip in l.rsplit("\t", 1)[0] and l.rsplit("\t", 1)[1].strip() == "device")
+        # a serial may hold spaces (an mDNS name): the line is "serial<TAB>device". A phone re-registering on the
+        # network can be missing from the list for a few seconds; that is waited out, not failed on.
+        for attempt in range(10):
+            found = [l.rsplit("\t", 1)[0] for l in sh("adb", "devices").splitlines()[1:]
+                     if "\t" in l and self.ip in l.rsplit("\t", 1)[0] and l.rsplit("\t", 1)[1].strip() == "device"]
+            if found:
+                return found[0]
+            time.sleep(3)
+        raise SystemExit("no connected phone matches " + self.ip)
 
     def adb(self, *args):
         return sh("adb", "-s", self.serial, *args)
