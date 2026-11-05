@@ -25,7 +25,7 @@ Every amount you'll see move today is a real state change on live storage nodes.
 
 **START: story bar reads 2 of 14; the username field is spotlit and "marcus.hale" is being typed**
 
-Marcus Hale owns Northgate. Watch what he doesn't do: he doesn't type a password. In the DSM version nobody has one. A fresh install comes with a single setup login, used once to connect the organization to DSM, and it's retired the moment the owner claims the organization with their wallet. From then on there is no password on file for Marcus, or for anyone here. Nothing to phish, nothing to leak, nothing to reset.
+Marcus Hale owns Northgate. Watch what he doesn't do: he doesn't type a password. In the DSM version nobody has one, and there is no way to set one. There is no password on file for Marcus, or for anyone here. Nothing to phish, nothing to leak, nothing to reset.
 
 `[CUT: Marcus's phone appears, bottom left, showing the request to sign]`
 
