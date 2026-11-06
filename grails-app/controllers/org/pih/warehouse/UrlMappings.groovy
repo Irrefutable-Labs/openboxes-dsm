@@ -42,6 +42,81 @@ class UrlMappings {
 
         // REST APIs with complex resource names or subresources
 
+        // DSM custody: each organization's own accounts, tokens and sessions, its admissions or release decisions,
+        // the custody peers sent it, and what its accounts established
+        "/api/dsm/accounts"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "accounts"]
+        }
+        "/api/dsm/accounts/warehouses"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "registerWarehouse"]
+        }
+        "/api/dsm/accounts/registries"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "registerRegistry"]
+        }
+        "/api/dsm/accounts/fees"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "claimFees"]
+        }
+        "/api/dsm/tokens"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "tokens", POST: "issueToken"]
+        }
+        "/api/dsm/tokens/adoptions"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "adoptToken"]
+        }
+        "/api/dsm/connections"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "connections"]
+        }
+        "/api/dsm/connections/offers"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "offerConnection"]
+        }
+        "/api/dsm/connections/accepts"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "acceptConnection"]
+        }
+        "/api/dsm/connections/confirmations"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "confirmConnection"]
+        }
+        "/api/dsm/admissions"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "admissions", POST: "requestAdmission"]
+        }
+        "/api/dsm/releases"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "releases"]
+        }
+        "/api/dsm/releases/decisions"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "releaseDecisions"]
+        }
+        "/api/dsm/releases/approvals"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "approveRelease"]
+        }
+        "/api/dsm/releases/declines"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "declineRelease"]
+        }
+        "/api/dsm/inbound"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "inbound", POST: "establishInbound"]
+        }
+        "/api/dsm/transfers"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [GET: "transfers"]
+        }
+        "/api/dsm/transfers/$id/proof"(parseRequest: true) {
+            controller = { "dsmCustodyApi" }
+            action = [POST: "proveHoldings"]
+        }
+
         "/api/categories"(parseRequest: true) {
             controller = { "categoryApi" }
             action = [GET: "list", POST: "save"]
@@ -1223,6 +1298,7 @@ class UrlMappings {
         "500"(controller: "errors", action: "handleException")
         "500"(controller: "errors", action: "handleNotFound", exception: ObjectNotFoundException)
         "500"(controller: "errors", action: "handleValidationErrors", exception: ValidationException)
+        "500"(controller: "errors", action: "handleDsmRefusal", exception: org.pih.warehouse.dsm.DsmCustodyException)
         "500"(controller: "errors", action: "handleUnauthorized", exception: AuthenticationException)
         "500"(controller: "errors", action: "handleConstraintViolation", exception: SQLIntegrityConstraintViolationException)
         "/"(controller: "dashboard", action: "index")

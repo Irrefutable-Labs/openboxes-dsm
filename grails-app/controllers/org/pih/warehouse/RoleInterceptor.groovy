@@ -37,6 +37,11 @@ class RoleInterceptor {
     def static changeControllers = ['createProductFromTemplate']
 
     def static managerActions = [
+        // the DSM screen as a warehouse manager reads it, and the goods they hand to a carrier or take in at the door
+        'dsmWallet'           : ['index', 'state', 'reconcile', 'dispatch', 'askHandover'],
+        'dsmCustodyApi'       : ['accounts', 'tokens', 'connections', 'admissions', 'inbound', 'transfers', 'establishInbound'],
+        // the phone screen at the door: hand to a carrier, hand over, take in, receive
+        'dsmPhone'            : ['index', 'state', 'dispatch', 'handover', 'takeIn', 'receive', 'send'],
         'inventory'           : ['createOutboundTransfer'],
         'stockMovementItemApi': ['eraseItem']
     ]
@@ -51,12 +56,20 @@ class RoleInterceptor {
         'shipper'        : ['create'],
         'locationGroup'  : ['create'],
         'locationType'   : ['list'],
-        'productSupplier': ['create', 'delete', 'edit']
+        'productSupplier': ['create', 'delete', 'edit'],
+        // what the DSM screen changes about the organization itself: for administrators, with their own wallets
+        'dsmWallet'      : ['attachAccount', 'offer', 'answered', 'addLevel', 'requestSeats', 'assignSeat', 'refreshSeat', 'checkNow', 'correctBooks', 'addCustodyToken', 'requestCustodyUnits'],
+        // what moves units into custody or proves a partner's: for administrators. A release is decided by the
+        // registry's seated operators, two different ones per admission, so deciding one is an administrator's act too.
+        'dsmCustodyApi'  : ['releases', 'releaseDecisions', 'requestAdmission', 'proveHoldings', 'approveRelease', 'declineRelease']
     ]
 
     def static superuserControllers = []
     def static superuserActions = [
         'console'                   : ['index', 'execute'],
+        // DSM setup acts for the organization's accounts: registering a host, issuing a product's token, connecting
+        // two accounts, asking for a holdings proof
+        'dsmCustodyApi'             : ['registerWarehouse', 'registerRegistry', 'claimFees', 'issueToken', 'adoptToken', 'offerConnection', 'acceptConnection', 'confirmConnection'],
         'inventory'                 : ['createInboundTransfer', 'createConsumed', 'editTransaction', 'deleteTransaction', 'saveTransaction'],
         'inventoryItem'             : ['adjustStock', 'transferStock'],
         'productCatalog'            : ['create', 'importProductCatalog'],
@@ -92,6 +105,8 @@ class RoleInterceptor {
     ]
 
     def static authenticatedActions = [
+        // the overlay, for whoever is signed in
+        'dsmWallet'           : ['timeline'],
         'api'                 : ['getAppContext', 'getRequestTypes', 'getMenuConfig'],
         'dashboard'           : ['megamenu'],
         'grails'              : ['errors'],

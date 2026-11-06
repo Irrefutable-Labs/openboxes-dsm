@@ -1,0 +1,6 @@
+# The DSM repository's pinned toolchain (its rust-toolchain.toml): the storage
+# node and the SDK harness this helper includes are compiled under the version
+# DSM verifies them with.
+[toolchain]
+channel = "1.98.0"
+profile = "minimal"

@@ -21,6 +21,7 @@ class AuthController {
     MailService mailService
     def userService
     def authService
+    def dsmAuthorityService
     GrailsApplication grailsApplication
     def recaptchaService
     def userAgentIdentService
@@ -47,10 +48,20 @@ class AuthController {
     /**
      * Allows user to log into the system.
      */
+    /** There are no passwords in this build: a fresh organization is claimed with a wallet, and everyone signs in with one. */
+    private static boolean passwordsRetired() {
+        return true
+    }
+
     def login() {
         if (session.user) {
             flash.message = "You have already logged in."
             redirect(controller: "dashboard", action: "index")
+            return
+        }
+        if (passwordsRetired()) {
+            redirect(controller: "dsmWalletSignIn", action: "index")
+            return
         }
 
         if (userAgentIdentService.isMobile()) {
@@ -65,6 +76,10 @@ class AuthController {
      * Performs the authentication logic.
      */
     def handleLogin() {
+        if (passwordsRetired()) {
+            redirect(controller: 'dsmWalletSignIn', action: 'index')
+            return
+        }
         def userInstance = User.findByUsernameOrEmail(params.username, params.username)
         if (userInstance) {
 
@@ -151,6 +166,10 @@ class AuthController {
      * Allow user to register a new account
      */
     def signup() {
+        if (passwordsRetired()) {
+            redirect(controller: 'dsmWalletSignIn', action: 'index')
+            return
+        }
         Boolean enabled = grailsApplication.config.openboxes.signup.enabled?:false
         if (!enabled) {
             flash.message = "Apologies, but the signup feature is disabled on your system. " +
@@ -170,6 +189,10 @@ class AuthController {
      */
     @Transactional
     def handleSignup() {
+        if (passwordsRetired()) {
+            redirect(controller: 'dsmWalletSignIn', action: 'index')
+            return
+        }
         def userInstance = new User()
         if ("POST".equalsIgnoreCase(request.getMethod())) {
             userInstance.properties = params

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.5.xsd">
+    <!-- A wallet that will never hold a seat here, a carrier's for instance, is named when it connects. -->
+    <changeSet author="cryptskii" id="041120261300-0">
+        <preConditions onFail="MARK_RAN"><not><columnExists tableName="dsm_wallet" columnName="name"/></not></preConditions>
+        <addColumn tableName="dsm_wallet">
+            <column name="name" type="VARCHAR(120)"><constraints nullable="true"/></column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>
