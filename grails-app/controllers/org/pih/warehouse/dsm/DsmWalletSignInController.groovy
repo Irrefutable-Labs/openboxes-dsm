@@ -36,6 +36,8 @@ class DsmWalletSignInController {
             boolean noOwner = !dsmAuthorityService.ownerExists()
             if (noOwner && !setupGiven()) {
                 // Nothing is offered to anyone until the installer gives the setup code from the server's data root.
+                // Opening the page is what writes the code there, so the installer has it to read.
+                dsmWalletService.setupCode()
                 return [code: null, failure: params.setup ? "That setup code does not match." : null,
                         next: sensible(session.targetUri as String), noOwner: true, setupNeeded: true]
             }
@@ -65,6 +67,7 @@ class DsmWalletSignInController {
                 return
             }
             if (!setupGiven()) {
+                dsmWalletService.setupCode()
                 response.status = 403
                 render([state: "FAILED", reason: "the setup code was not given: it is in the file setup-code in the server's DSM data root"] as JSON)
                 return

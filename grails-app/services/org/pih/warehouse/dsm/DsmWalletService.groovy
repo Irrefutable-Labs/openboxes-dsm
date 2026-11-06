@@ -120,7 +120,7 @@ class DsmWalletService {
     /** The account people connect to: the first warehouse account this organization registered. */
     DsmWarehouseAccount homeAccount() {
         DsmWarehouseAccount home = DsmWarehouseAccount.findAllByLocationIsNotNull([sort: "dateCreated", order: "asc", max: 1])[0]
-                ?: DsmWarehouseAccount.findAllByRegistry(true, [sort: "dateCreated", order: "asc", max: 1])[0]
+                ?: DsmWarehouseAccount.findAllByLocationIsNull([sort: "dateCreated", order: "asc", max: 1])[0]
         if (!home) {
             throw new DsmCustodyException("this organization has no DSM account yet")
         }
