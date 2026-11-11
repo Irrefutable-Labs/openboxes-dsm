@@ -1,7 +1,8 @@
 # Recording the demo
 
 About 9 minutes, 14 scenes, on the live storage fleet with four real wallets. Claude drives the browser and the phones while
-you record. The story bar, the live phone and the WEB2/DSM panel explain each step on screen.
+you record. The story bar, the live phone and the WEB2/DSM panel explain each step on screen. To walk the same story
+without phones, end to end, see README.md, Without phones.
 
 1. Keep the four phones plugged in or awake, with Wireless debugging on: `RFGYB0PQ8XK` is Marcus, `RFGYB0PQ9FF` is Priya,
    `R5CW620MQVL` is the driver, `RF8Y90PX5GN` is Amara.
@@ -11,7 +12,7 @@ you record. The story bar, the live phone and the WEB2/DSM panel explain each st
 To start over from clean data, about 5 minutes:
 
 ```bash
-python3 /Users/cryptskii/Desktop/claude_workspace/d-s-m/openboxes/dsm/demo/setup.py
+python3 dsm/demo/setup.py
 ```
 
 ## How it is driven
@@ -26,7 +27,7 @@ done in the browser. Nothing is left to chance: a beat whose check fails stops t
   - Marcus Hale owns Northgate. His wallet also stands in as the product registry.
   - Priya Nair is Northgate's warehouse manager: a seat, Send from stock, and the hand-over to the driver at the door.
   - Dev Okafor drives for Meridian Freight: a wallet and nothing else, never signed in anywhere. It is connected to both
-    organizations and adopted Northgate's custody token `NGCUST` (made in Marcus's wallet) before the recording.
+    organizations and added Northgate's custody object `NGCUST` (issued in Marcus's wallet) before the recording.
   - Amara Osei owns Lakeside and works its door: she asks the driver's wallet to hand over, takes in, counts and receives.
 - The shipment is prepared off camera up to its send step. The send, and everything DSM does, happens on camera.
 - Scenes 6 to 9 happen on the phones: the door screen (`/dsmPhone`) in Chrome, shown large on the recording, each person
@@ -49,7 +50,7 @@ done in the browser. Nothing is left to chance: a beat whose check fails stops t
 | 8 | Lakeside's door shows 0 of 120 handed over; Amara asks the driver's wallet, he approves, she takes in | Amara's phone, Door; the driver's wallet |
 | 9 | Counting 130 is refused on the phone, 120 is received | Amara's phone, Receive |
 | 10 | Marcus revokes the seat, and Priya's next click is refused | Marcus's phone, Northgate |
-| 11 | Northgate verifies what Lakeside holds | DSM page |
+| 11 | Northgate verifies what Lakeside owns | DSM page |
 | 12 | Database edit: 40 boxes, $736, caught and signed | DSM page |
 | 13 | Forward correction, and the finding stays | DSM page |
 | 14 | Summary | |

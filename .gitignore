@@ -56,3 +56,4 @@ docker/openboxes.war
 /dsm/fleet/target
 /dsm/demo/run*
 /dsm/demo/logs
+/dsm/demo/__pycache__

@@ -10,7 +10,8 @@ cd "$O" || exit 1
 code=$?
 grep -E 'BUILD |\.groovy: [0-9]+:' "$HERE/logs/war.log" | cut -c1-170
 [ "$code" = 0 ] || exit 1
-pids() { ps -axo pid=,command= | grep 'openboxes.war' | grep -v grep | awk '{print $1}'; }
+# This demo's instances only: each names its data root under run/, so another checkout's OpenBoxes is left alone.
+pids() { ps -axo pid=,command= | grep 'openboxes.war' | grep -F "$HERE/run/" | grep -v grep | awk '{print $1}'; }
 for p in $(pids); do kill "$p"; done
 for _ in $(seq 1 90); do [ -z "$(pids)" ] && break; sleep 1; done
 for p in $(pids); do echo "force stopping $p"; kill -9 "$p"; done

@@ -3,8 +3,8 @@
 products under its own codes, prices in USD, and each organization's DSM account attached with network fees.
 
 The companies, products and prices are made up. Everything on DSM is real and is done by people in their wallets: the
-owners claiming their organizations, the registry creating product tokens and approving every release, seats, shipments
-and proofs. Nothing here touches a wallet, a token or a seat.
+owners claiming their organizations, the registry issuing products' objects and approving every release, seats, shipments
+and proofs. Nothing here touches a wallet, an object or a seat.
 
 The default admin login is the one the project's own install data creates, used here only until an owner's wallet takes
 over (grails-app/migrations/install).

@@ -39,11 +39,11 @@ That signature is the session. It is bound to this browser's code, so it can't b
 
 **START: story bar reads 3 of 14; the DSM page, the "assign a seat" card spotlit**
 
-This is the DSM page inside OpenBoxes. Marcus is assigning Priya Nair a seat as warehouse manager. In stock OpenBoxes this would be a role flag on a user row that any administrator can flip. Here it's a seat: Northgate's owner minted exactly five seat tokens, and that's the cap on how many managers Northgate can have.
+This is the DSM page inside OpenBoxes. Marcus is assigning Priya Nair a seat as warehouse manager. In stock OpenBoxes this would be a role flag on a user row that any administrator can flip. Here it's a seat: Northgate's owner issued exactly five seat objects, and that's the cap on how many managers Northgate can have.
 
 `[WAIT: the form fills itself, the button is pressed, and the row "Priya Nair" appears in the seats table]`
 
-The request that just went out put seat number one into a vault on DSM with Priya's wallet named as holder. Look at the panel: a DSM entry, signed by Northgate's account. OpenBoxes keeps nothing authoritative about this; when it needs to know what Priya may do, it reads the vault. She can't transfer the seat. Only the owner's wallet can take it back, and you'll see that later.
+The request that just went out put seat number one into a vault on DSM with Priya's wallet named as holder. Look at the panel: a DSM entry, signed by Northgate's account. OpenBoxes keeps nothing authoritative about this; when it needs to know what Priya may do, it reads the vault. She can't pass the seat on. Only the owner's wallet can take it back, and you'll see that later.
 
 ## 4. 500 boxes arrive
 
@@ -53,7 +53,7 @@ A delivery arrives: five hundred boxes of amoxicillin, roughly nine thousand dol
 
 `[CUT: the registry's phone appears with "Pay 500" waiting]`
 
-Now the part that's new. Each product has a token on DSM, one unit per box, and the issuer is the product registry. The registry's wallet is being asked to pay five hundred units into Northgate's custody account. Until it does, Northgate holds nothing, and OpenBoxes will not let the count be recorded.
+Now the part that's new. Each product is an object on DSM, one unit per box, and the issuer is the product registry. The registry's wallet is being asked to send five hundred units to Northgate's custody account. Until it does, Northgate owns none of them, and OpenBoxes will not let the count be recorded.
 
 `[WAIT, about a minute: the phone approves, and the page moves on its own to the Record Stock page, then to the stock card. This is the longest wait in the demo; the storage nodes are settling the transfer]`
 
@@ -87,11 +87,11 @@ Note the order of operations. The first thing the server did was move a hundred 
 
 **START: story bar reads 7 of 14; Priya's phone, the carrier picker shows "Dev Okafor, Meridian Freight"**
 
-Priya picks the carrier. Dev Okafor drives for Meridian Freight. He has no OpenBoxes account at either organization and never will; what he has is a wallet, and that wallet adopted Northgate's custody token before today.
+Priya picks the carrier. Dev Okafor drives for Meridian Freight. He has no OpenBoxes account at either organization and never will; what he has is a wallet, and that wallet added Northgate's custody object before today.
 
 `[WAIT: "Hand to carrier" is tapped; the card changes to "With carrier"]`
 
-Northgate's account just paid a hundred and twenty units of its custody token to the driver's wallet. One unit per box. That's not money and it isn't the product token; it's a receipt of physical possession that only Lakeside's account will accept.
+Northgate's account just sent a hundred and twenty units of its custody object to the driver's wallet. One unit per box. That's not money and it isn't the product's object; it's a receipt of physical possession that only Lakeside's account will accept.
 
 `[CUT: the picture becomes the driver's phone, his wallet's history, with the 120 NGCUST just received]`
 
@@ -151,11 +151,11 @@ Her next request. The seat check fails, the session is refused, and the page tel
 
 **START: story bar reads 11 of 14; the sign-in page, "marcus.hale" typed again and approved on his phone; then the DSM page with the transfers table spotlit**
 
-Marcus signs back in. The question now is one that two separate companies normally can't answer without a phone call or a shared login: does Lakeside still hold what Northgate sent?
+Marcus signs back in. The question now is one that two separate companies normally can't answer without a phone call or a shared login: does Lakeside still own what Northgate sent?
 
-`[WAIT: "Verify partner" is pressed; the message says "Asking the partner's account to prove what it holds." Then, within a few seconds, "Proven: they hold 120 units." and the Proven column fills in]`
+`[WAIT: "Verify partner" is pressed; the message says "Asking the partner's account to prove what it owns." Then, within a few seconds, "Proven: they own 120 units." and the Proven column fills in]`
 
-Northgate's account asked Lakeside's account for a proof of its holding. Lakeside's account answered with a proof against the storage nodes, and Northgate's account verified that proof itself before the page showed the number. Northgate never read Lakeside's database and never got a login. It got a verified fact: a hundred and twenty.
+Northgate's account asked Lakeside's account for a proof of what it owns. Lakeside's account answered with a proof against the storage nodes, and Northgate's account verified that proof itself before the page showed the number. Northgate never read Lakeside's database and never got a login. It got a verified fact: a hundred and twenty.
 
 ## 12. Someone edits the database
 
@@ -181,6 +181,6 @@ An adjustment transaction brings the books back to three eighty, and a second si
 
 **START: story bar reads 14 of 14**
 
-What you watched: sign-in by signature, with no passwords anywhere in the system. Access as seats, minted by the owner, capped, and revocable from a phone. Custody that moved between two companies and a driver with every step signed, and that one company proved to the other without access. And books that were caught the moment they drifted, with the finding kept.
+What you watched: sign-in by signature, with no passwords anywhere in the system. Access as seats, issued by the owner, capped, and revocable from a phone. Custody that moved between two companies and a driver with every step signed, and that one company proved to the other without access. And books that were caught the moment they drifted, with the finding kept.
 
 OpenBoxes didn't change for the people using it. DSM sits underneath it: post-quantum authority, no server in the middle, working at the edge where the internet ends. It does the same for any system that keeps books on things of value.

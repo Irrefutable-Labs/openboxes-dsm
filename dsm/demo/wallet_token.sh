@@ -1,6 +1,7 @@
 #!/bin/bash
-# Create a token through the real wallet's wizard: wallet_token.sh SERIAL_PART TICKER "NAME" SUPPLY "DESCRIPTION" [burn]. Prints
-# its anchor. A product's token needs "burn": a stock decrease at a DSM warehouse burns its units, and the policy cannot change later.
+# Issue an object through the real wallet's wizard (Tokens, Create token): wallet_token.sh SERIAL_PART TICKER "NAME" SUPPLY
+# "DESCRIPTION" [burn]. Prints its anchor. A product's object needs "burn": a stock decrease at a DSM warehouse burns its units,
+# and the policy cannot change later.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 P="$1"; TICKER="$2"; NAME="$3"; SUPPLY="$4"; DESC="$5"; BURN="${6:-}"

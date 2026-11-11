@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Lakeside's account checks its connection with Northgate and answers what waits, as it would on its own schedule."""
+"""Lakeside's account checks its connection with Northgate and answers what waits, as it would on its own schedule.
+
+A request reaches the account only when it checks (connect.sync), and an approval is carried out by the next check: this
+checks for up to a minute, approves what waits, and checks once more so the approval is carried out before it exits."""
 import re
 import time
 import urllib.request
@@ -67,15 +70,19 @@ def router(op, method, body):
 
 router(2, "connect.sync", b"")
 pending = []
-for _ in range(50):
+deadline = time.time() + 60
+while time.time() < deadline:
     reply = router(1, "connect.pending", b"")
     pending = [dict(parse(v)) for n, v in parse(reply[4]) if n == 1] if 4 in reply else []
     if pending:
         break
     time.sleep(1)
     router(2, "connect.sync", b"")
-print("waiting at the hospital:", [(p.get(3, b"").decode(), p.get(4, b"").decode()[:70]) for p in pending])
+print("waiting at the hospital:", [(p.get(3, b"").decode(), p.get(4, b"").decode()[:70]) for p in pending], flush=True)
 for p in pending:
     body = field(1, p[1]) + varint(2 << 3) + varint(p[2]) + varint(3 << 3) + varint(1)
     decided = router(2, "connect.respond", body)
-    print("decided:", dict(parse(decided[10])).get(3, b"").decode()[:160])
+    print("decided:", dict(parse(decided[10])).get(3, b"").decode()[:160], flush=True)
+if pending:
+    router(2, "connect.sync", b"")
+    print("carried out on the account's next check", flush=True)

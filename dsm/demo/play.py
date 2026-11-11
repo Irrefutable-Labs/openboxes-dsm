@@ -8,6 +8,10 @@
 The browser steps a viewer should see (typing a name, sending, receiving) are done in the browser; everything a phone or an
 account does, and every check, is here, so a beat never starts on a wrong footing. Checks read the databases and the
 storage nodes, never a screen.
+
+With DSM_DEMO_WALLETS=terminal (setup.py made the run that way) the phones are terminal wallets (terminal_wallet.py) and
+the door screens open in a desktop Chrome per person (browser.py) at each organization's own hostname; walk.py then
+does the browser steps too, so the whole story runs end to end without a phone.
 """
 import importlib.util
 import json
@@ -24,19 +28,34 @@ setup = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(setup)
 Phone, sql, say = setup.Phone, setup.sql, setup.say
 marcus, priya, carrier, amara = Phone(setup.NORTHGATE), Phone(setup.PRIYA), Phone(setup.CARRIER), Phone(setup.LAKESIDE)
-spec = importlib.util.spec_from_file_location("phone_web", HERE + "/phone_web.py")
+TERMINAL = setup.TERMINAL
+spec = importlib.util.spec_from_file_location("web", HERE + ("/browser.py" if TERMINAL else "/phone_web.py"))
 web = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(web)
 
 
 def scene(n, focus=""):
+    if TERMINAL:
+        return  # no story bar: it shows the phones' screens, and a terminal run has none
     urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8799/scene/%s" % n, data=b"", method="POST"), timeout=5)
     urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8799/focus", data=focus.encode(), method="POST"), timeout=5)
 
 
 def show_phone(name):
     """Which phone the recording shows for the rest of the scene: northgate, priya, carrier, lakeside, or '' for the scene's own."""
+    if TERMINAL:
+        return
     urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8799/phone", data=name.encode(), method="POST"), timeout=5)
+
+
+def site(port):
+    """Where a person's browser reaches an organization: the Mac's LAN address from a phone, its own hostname here."""
+    return web.host(port) if TERMINAL else web.host()
+
+
+def priya_prefix():
+    """The start of Priya's wallet identity, as the authority record names her wallet."""
+    return priya.id()[:4] if TERMINAL else "P58T"
 
 
 def one(org, statement):
@@ -91,7 +110,10 @@ def pick_and_tap(phone, selector, words, button):
 
 
 def wallet_history(phone):
-    """The wallet's own screen, Wallet then History: what it has just been paid."""
+    """The wallet's own screen, Wallet then History: what it has just been sent."""
+    if TERMINAL:
+        print("  the driver's wallet owns %s %s" % (phone.owns(setup.CUSTODY_TICKER), setup.CUSTODY_TICKER))
+        return
     phone.front()
     phone.cdp("(function(){var e=[].slice.call(document.querySelectorAll('.dsm-menu-item')).filter(function(x){return x.textContent.trim()=='WALLET'})[0];if(e)e.click();return 1})()")
     time.sleep(2)
@@ -100,7 +122,7 @@ def wallet_history(phone):
 
 def door_screen(phone, port, username):
     """Open an organization's door screen in Chrome on the phone, signing in with the wallet on the same phone."""
-    web.open_url(phone.serial, "http://%s:%d/openboxes/dsmPhone" % (web.host(), port))
+    web.open_url(phone.serial, "http://%s:%d/openboxes/dsmPhone" % (site(port), port))
     if on_phone(phone, "location.pathname").endswith("/dsmPhone"):
         return
     asked = on_phone(phone, "document.getElementById('username').value=%s; document.getElementById('ask').dispatchEvent(new Event('submit', {cancelable: true}));"
@@ -121,7 +143,7 @@ CHECKS = {
     3: lambda: need(one("a", "select status from dsm_seat where number=1") == "ASSIGNED", "seat #1 assigned to Priya"),
     4: lambda: [need(one("a", "select status from dsm_admission where reference='GRN-77114'") == "ESTABLISHED", "500 boxes released"),
                 need(one("a", "select quantity_drawn from dsm_admission where reference='GRN-77114'") == "500", "500 boxes recorded")],
-    5: lambda: need(one("a", "select count(*) from dsm_authority_record where kind='SIGN_IN' and wallet like 'P58T%'") >= "1", "Priya signed in"),
+    5: lambda: need(one("a", "select count(*) from dsm_authority_record where kind='SIGN_IN' and wallet like '%s%%'" % priya_prefix()) >= "1", "Priya signed in"),
     6: lambda: need(one("a", "select quantity from dsm_custody_transfer where kind='SHIPMENT'") == "120", "120 boxes moved on DSM"),
     7: lambda: need(one("a", "select units from dsm_carriage where kind='DISPATCHED'") == "120", "120 custody units in the driver's wallet"),
     8: lambda: [need(one("b", "select units from dsm_carriage where kind='HANDED_OVER'") == "120", "120 custody units handed over at Lakeside"),
@@ -129,7 +151,7 @@ CHECKS = {
     9: lambda: need(one("b", "select quantity_received from dsm_custody_transfer where kind='INBOUND'") == "120", "Lakeside received 120"),
     10: lambda: print("  ok: the verdict is final on the storage nodes; the seat row comes back when Marcus next opens the DSM page"),
     11: lambda: [need(one("a", "select status from dsm_seat where number=1") == "RETURNED", "seat #1 returned"),
-                 need(one("a", "select proven_amount from dsm_custody_transfer where kind='SHIPMENT'") == "120", "Lakeside's holding proven: 120")],
+                 need(one("a", "select proven_amount from dsm_custody_transfer where kind='SHIPMENT'") == "120", "what Lakeside owns proven: 120")],
     12: lambda: need(one("a", "select count(*) from dsm_reconcile_event where kind='GAP' and gap=40") == "1", "the 40-box gap found and signed"),
     13: lambda: need(one("a", "select count(*) from dsm_reconcile_event where kind='CORRECTED'") == "1", "corrected by a new entry"),
 }
@@ -152,7 +174,7 @@ def do(n):
         priya.show("as priya.nair")
         time.sleep(6)
         priya.approve("as priya.nair")
-        wait(60, lambda: one("a", "select count(*) from dsm_authority_record where kind='SIGN_IN' and wallet like 'P58T%'") >= "1", "Priya signed in")
+        wait(60, lambda: one("a", "select count(*) from dsm_authority_record where kind='SIGN_IN' and wallet like '%s%%'" % priya_prefix()) >= "1", "Priya signed in")
     elif n == 6:
         # On her phone: Northgate's Send tab, a new shipment from stock: 120 AMX500 to Lakeside, shipped.
         scene(6)
@@ -226,13 +248,24 @@ def do(n):
         wait(90, lambda: one("b", "select quantity_received from dsm_custody_transfer where kind='INBOUND'") == "120", "120 received")
         time.sleep(4)
     elif n == 10:
-        cell = one("a", "select verdict_cell from dsm_seat where number=1")
-        marcus.front()
-        out = subprocess.run(["bash", HERE + "/wallet_revoke.sh", setup.NORTHGATE, cell], capture_output=True, text=True, timeout=280).stdout
-        need("Final: revoke" in out, "revoked on Marcus's phone")
+        if TERMINAL:
+            # Marcus decides the seat's match from his wallet: what SoFi, Escrow, Decide revoke does on his phone.
+            state, outcome = marcus.decide(one("a", "select vault_id from dsm_seat where number=1"), "revoke")
+            print("  Marcus's wallet decided:", state, outcome)
+            need(state.endswith("FINAL") and outcome == "revoke", "revoked from Marcus's wallet")
+        else:
+            cell = one("a", "select verdict_cell from dsm_seat where number=1")
+            marcus.front()
+            out = subprocess.run(["bash", HERE + "/wallet_revoke.sh", setup.NORTHGATE, cell], capture_output=True, text=True, timeout=280).stdout
+            need("Final: revoke" in out, "revoked on Marcus's phone")
     elif n == 11:
         for _ in range(6):
-            subprocess.run([sys.executable, "-I", HERE + "/partner_answers.py"], capture_output=True, text=True, timeout=120)
+            try:
+                answered = subprocess.run([sys.executable, "-I", HERE + "/partner_answers.py"], capture_output=True, text=True, timeout=120)
+                if answered.stdout.strip():
+                    print("  " + answered.stdout.strip().replace("\n", "\n  "))
+            except subprocess.TimeoutExpired:
+                print("  Lakeside's account did not finish checking within two minutes; it checks again")
             if one("a", "select proven_amount from dsm_custody_transfer where kind='SHIPMENT'") == "120":
                 break
             time.sleep(1)

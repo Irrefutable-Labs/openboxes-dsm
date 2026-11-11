@@ -1,6 +1,6 @@
 #!/bin/bash
 # The scene's attack: someone with database access adds 40 boxes of amoxicillin to Northgate's books, by hand.
-sql() { docker exec openboxes-demo-a mysql -uopenboxes -popenboxes openboxes -Nse "$1" 2>&1 | grep -v Warning; }
+sql() { docker exec "${DSM_DEMO_CONTAINERS:-openboxes-demo}-a" mysql -uopenboxes -popenboxes openboxes -Nse "$1" 2>&1 | grep -v Warning; }
 P=$(sql "select id from product where product_code='AMX500'")
 E=$(sql "select e.id from transaction_entry e join inventory_item i on i.id=e.inventory_item_id join transaction t on t.id=e.transaction_id where i.product_id='$P' and e.quantity=500 limit 1")
 [ -n "$E" ] || { echo "no 500 entry to edit"; exit 1; }

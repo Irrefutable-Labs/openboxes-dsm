@@ -6,6 +6,14 @@ Four phones. Marcus Hale owns Northgate (RFGYB0PQ8XK, which also stands in as th
 Northgate's warehouse manager (RFGYB0PQ9FF), connected to Northgate as a person. Dev Okafor drives for Meridian Freight
 (R5CW620MQVL): a wallet only, connected to both organizations, never signed in anywhere. Amara Osei owns Lakeside
 (RF8Y90PX5GN). Nothing is left to do but the story.
+
+With DSM_DEMO_WALLETS=terminal there are no phones: the four people's wallets are terminal wallets (terminal_wallet.py,
+each a dsm-app-host of its own, as DSM's `make dev-wallet` runs them), Marcus's wallet issues the run's objects itself,
+and nothing touches adb.
+
+Environment: DSM_CHECKOUT (the DSM code the hosts are built from; default ../dsm-main beside this checkout), DSM_BIN
+(where its dsm-app-host is; default DSM_CHECKOUT/target/release), JAVA_HOME (a JDK 8), DSM_DEMO_CONTAINERS (the prefix
+of this run's two MySQL containers; default openboxes-demo).
 """
 import http.cookiejar
 import importlib.util
@@ -32,12 +40,20 @@ CARRIER_NAME = "Dev Okafor, Meridian Freight"
 SEAT_TICKER = "NGSEAT"
 CUSTODY_TICKER = "NGCUST"
 CUSTODY_UNITS = 1000
-# NGCUST: Northgate's custody token, made once in Marcus's wallet; one unit is one unit of goods in someone's hands.
+# NGCUST: Northgate's custody object, issued once in Marcus's wallet; one unit is one unit of goods in someone's hands.
 CUSTODY = "9H16Q9S3XG2G3Z659QMGEZ5QJNWS0SJJ94DQXZMAP6N8F969SVYG"
 AMX, ORS, SEATS = ("C4P4XGDK0SM8KYHN9EYB6BQ5MTZ29NQAB2P7AFHWKV09P8B0JMR0", "0PYXZVSMZ8Z27XXXSH0S9RNC20PJA5H2QQH4GVR4AXJ4RHDRBS5G",
                    "W0KWAVP5S6PXHMP6D134A2RFWETGR075348X5XFAX76WE8N4CGXG")
-ENV = dict(os.environ, DSM_CHECKOUT=D + "/wt-fleet-reprovision", DSM_BIN=D + "/dsm-phone-host-target/release",
-           JAVA_HOME=D + "/jdk8-zulu/zulu8.98.0.107-ca-jdk8.0.512-macosx_aarch64/Contents/Home")
+# The phones' objects above were issued on the beta fleet before its reprovisioning of 2026-11-11 and are not on it now:
+# a phone run issues them again in Marcus's wallet (wallet_token.sh) and puts their anchors here. A terminal run issues
+# its own every time.
+TERMINAL = os.environ.get("DSM_DEMO_WALLETS") == "terminal"
+# Docker names this run's two databases with this prefix, so another checkout's demo databases are never touched.
+CONTAINERS = os.environ.get("DSM_DEMO_CONTAINERS") or "openboxes-demo"
+DSM_CHECKOUT = os.environ.get("DSM_CHECKOUT") or D + "/dsm-main"
+ENV = dict(os.environ, DSM_CHECKOUT=DSM_CHECKOUT, DSM_BIN=os.environ.get("DSM_BIN") or DSM_CHECKOUT + "/target/release",
+           JAVA_HOME=os.environ.get("JAVA_HOME") or D + "/jdk8-zulu/zulu8.98.0.107-ca-jdk8.0.512-macosx_aarch64/Contents/Home",
+           DSM_DEMO_CONTAINERS=CONTAINERS)
 
 
 def say(text):
@@ -49,7 +65,7 @@ def sh(*args, timeout=120):
 
 
 def sql(org, statement):
-    return sh("docker", "exec", "openboxes-demo-" + org, "mysql", "-uopenboxes", "-popenboxes", "openboxes", "-Nse", statement)
+    return sh("docker", "exec", CONTAINERS + "-" + org, "mysql", "-uopenboxes", "-popenboxes", "openboxes", "-Nse", statement)
 
 
 class Phone:
@@ -127,7 +143,7 @@ class Phone:
             self.press("DISCONNECT", 10)
 
     def adopt(self, anchor, ticker):
-        """Add a token to this wallet by its anchor (Tokens, Add Token), so the wallet can be paid it."""
+        """Add an object to this wallet by its anchor (Tokens, Add Token), so the wallet can be sent it."""
         self.front()
         for _ in range(4):
             if self.cdp("document.querySelectorAll('.dsm-menu-item').length").strip() not in ("", "0"):
@@ -182,6 +198,19 @@ class Phone:
                 return self.screen()
             self.press("CHECK", 8)
         raise SystemExit("the phone never showed: " + words)
+
+
+if TERMINAL:
+    # The people's wallets in the terminal stand where the phones stood: same calls, same words to approve.
+    spec = importlib.util.spec_from_file_location("terminal_wallet", HERE + "/terminal_wallet.py")
+    terminal = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(terminal)
+    Phone = terminal.TerminalWallet
+
+
+def short_id(phone, fallback):
+    """The first eight characters of a wallet's identity, as the DSM page lists it."""
+    return phone.id()[:8] if TERMINAL else fallback
 
 
 class Org:
@@ -294,58 +323,95 @@ def keep_two_old_runs():
     for old in olds[:-2]:
         stamp = old[len("run-before-"):]
         for org in ("a", "b"):
-            sh("docker", "rm", "-fv", "openboxes-demo-%s-before-%s" % (org, stamp))
+            sh("docker", "rm", "-fv", "%s-%s-before-%s" % (CONTAINERS, org, stamp))
         shutil.rmtree(os.path.join(HERE, old), ignore_errors=True)
         say("  an old run is gone: " + old)
     # containers whose run directory is already gone (earlier naming) go the same way
     listed = sh("docker", "ps", "-a", "--format", "{{.Names}}").split()
-    kept = {"openboxes-demo-%s-before-%s" % (org, d[len("run-before-"):]) for d in olds[-2:] for org in ("a", "b")}
+    kept = {"%s-%s-before-%s" % (CONTAINERS, org, d[len("run-before-"):]) for d in olds[-2:] for org in ("a", "b")}
     for name in listed:
-        if re.match(r"^openboxes-demo-(a|b)-before-", name) and name not in kept:
+        if re.match(r"^%s-(a|b)-before-" % re.escape(CONTAINERS), name) and name not in kept:
             sh("docker", "rm", "-fv", name)
 
 
 def fresh():
-    say("connected wallets leave the old run")
-    for ip in (NORTHGATE, PRIYA, CARRIER, LAKESIDE):
-        Phone(ip).disconnect_all()
+    if not TERMINAL:
+        say("connected wallets leave the old run")
+        for ip in (NORTHGATE, PRIYA, CARRIER, LAKESIDE):
+            Phone(ip).disconnect_all()
     say("rebuilding")
     built = subprocess.run(["./gradlew", "--no-daemon", "--console=plain", "war", "bootRepackage", "-x", "npm_run_bundle", "-x", "npmInstall"],
                            cwd=ROOT, env=ENV, capture_output=True, text=True)
     if built.returncode:
         raise SystemExit(built.stdout[-1500:])
     say("the old run moves aside")
-    subprocess.run(["pkill", "-f", "dsm/demo/presenter.py"])
-    subprocess.run(["pkill", "-f", "openboxes.war"])
-    subprocess.run(["pkill", "-f", "demo/network.sh"])
+    # Only this checkout's processes: each names this demo's directory (its script, or a data root under run/), so a
+    # host or OpenBoxes another checkout or session runs on this machine is left alone.
+    subprocess.run(["pkill", "-f", HERE + "/presenter.py"])
+    subprocess.run(["pkill", "-f", HERE + "/run/"])
+    subprocess.run(["pkill", "-f", HERE + "/network.sh"])
     time.sleep(1)
-    subprocess.run(["pkill", "-f", "dsm-app-host"])
+    subprocess.run(["pkill", "-f", HERE + "/run/"])
     for _ in range(90):
-        if not sh("pgrep", "-f", "openboxes.war|dsm-app-host").strip():
+        if not sh("pgrep", "-f", HERE + "/run/").strip():
             break
         time.sleep(1)
+    if TERMINAL:
+        browser().stop_all()
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    os.rename(HERE + "/run", HERE + "/run-before-" + stamp)
+    if os.path.isdir(HERE + "/run"):
+        os.rename(HERE + "/run", HERE + "/run-before-" + stamp)
     keep_two_old_runs()
     for org in ("a", "b"):
-        sh("docker", "stop", "openboxes-demo-" + org)
-        sh("docker", "rename", "openboxes-demo-" + org, "openboxes-demo-%s-before-%s" % (org, stamp))
+        sh("docker", "stop", CONTAINERS + "-" + org)
+        sh("docker", "rename", CONTAINERS + "-" + org, "%s-%s-before-%s" % (CONTAINERS, org, stamp))
     sh("bash", HERE + "/mysql.sh", timeout=280)
     sh("python3", HERE + "/up.py", "network")
-    for _ in range(90):
+    # Each host holds its ingress until the network can find its account (up to two minutes): a run waits for all of them.
+    for _ in range(180):
         if "READY" in open(HERE + "/logs/network.log").read():
             break
         time.sleep(2)
+    else:
+        raise SystemExit("the DSM hosts did not start: " + open(HERE + "/logs/network.log").read()[-1500:])
     sh("python3", HERE + "/up.py", "a", "b")
     say("OpenBoxes is starting")
     for port in (8081, 8082):
         seed.Instance("openboxes", port).wait_up()
 
 
+def browser():
+    """The desktop browser a terminal run drives (browser.py)."""
+    spec = importlib.util.spec_from_file_location("browser", HERE + "/browser.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def terminal_objects(marcus, *others):
+    """A terminal run's objects, issued in Marcus's wallet as he would on his phone (Tokens, Create token): the two
+    products' objects, burnable because a stock decrease at a DSM warehouse burns its units; the seat object, whose supply
+    is the most seats there can ever be; and the custody object. Their anchors are kept in run/objects.json."""
+    say("the four wallets get ERA from the network's faucet, for their storage fees")
+    for wallet in (marcus,) + others:
+        say("  %s: %s" % (wallet.name, wallet.fund()))
+    issued = {}
+    for symbol, name, supply, burnable in (("AMX500", "Amoxicillin 500 mg capsules, box of 100", 1000000, True),
+                                           ("ORS020", "Oral rehydration salts, pack of 20", 1000000, True),
+                                           (SEAT_TICKER, "Northgate warehouse manager seat", 5, False),
+                                           (CUSTODY_TICKER, "Northgate custody unit", 1000000, False)):
+        issued[symbol] = marcus.issue(symbol, name, supply, burnable=burnable)
+        say("  Marcus's wallet issued %s %s: %s" % (supply, symbol, issued[symbol]))
+    with open(HERE + "/run/objects.json", "w") as out:
+        json.dump(issued, out, indent=1)
+    return issued["AMX500"], issued["ORS020"], issued[SEAT_TICKER], issued[CUSTODY_TICKER]
+
+
 def main():
     fresh()
     north, lake = Org(8081), Org(8082)
     marcus, priya, carrier, amara = Phone(NORTHGATE), Phone(PRIYA), Phone(CARRIER), Phone(LAKESIDE)
+    amx, ors_anchor, seats, custody_anchor = terminal_objects(marcus, priya, carrier, amara) if TERMINAL else (AMX, ORS, SEATS, CUSTODY)
     for org, first, last, username, email in (("a", "Marcus", "Hale", "marcus.hale", "marcus.hale@northgate.example"),
                                               ("b", "Amara", "Osei", "amara.osei", "amara.osei@lakeside.example")):
         sql(org, "update person p join user u on u.id=p.id set p.first_name='%s', p.last_name='%s', p.email='%s' where u.username='admin'; "
@@ -354,9 +420,9 @@ def main():
     sql("a", "update location set name='Northgate Central Warehouse' where id='1'; update location set name='Lakeside District Hospital' where id='2'")
     sql("b", "update location set name='Lakeside Hospital Pharmacy' where id='1'; update location set name='Northgate Medical Distribution' where id='2'")
 
-    say("Marcus claims Northgate on his phone: the first run, no password anywhere")
+    say("Marcus claims Northgate with his wallet: the first run, no password anywhere")
     digest = north.claim(marcus)
-    say("Amara claims Lakeside on her phone")
+    say("Amara claims Lakeside with hers")
     lake.claim(amara)
     for org, who in ((north, "Marcus Hale"), (lake, "Amara Osei")):
         owners = [w["label"] for w in org.call("/dsmWallet/state")["wallets"] if w["owner"]]
@@ -371,7 +437,7 @@ def main():
 
     say("products on DSM, and the two organizations connect")
     north_account, lake_account = north.account(), lake.account()
-    for org, code, anchor in ((north, "AMX500", AMX), (north, "ORS020", ORS), (lake, "PH-10412", AMX), (lake, "PH-30145", ORS)):
+    for org, code, anchor in ((north, "AMX500", amx), (north, "ORS020", ors_anchor), (lake, "PH-10412", amx), (lake, "PH-30145", ors_anchor)):
         org.call("/api/dsm/tokens/adoptions", form={"productId": org.product(code), "policyAnchor": anchor})
     offer = north.call("/api/dsm/connections/offers", form={"accountId": north_account})
     lake.call("/api/dsm/connections/accepts", form={"accountId": lake_account, "code": offer["code"], "peerLocationId": "2"})
@@ -382,9 +448,9 @@ def main():
 
     say("seats: the level and five released")
     me = north.call("/dsmWallet/state")["me"]["id"]
-    level = north.call("/dsmWallet/addLevel", form={"name": "Warehouse manager", "roleType": "ROLE_MANAGER", "policyAnchor": SEATS, "creatorId": me})
+    level = north.call("/dsmWallet/addLevel", form={"name": "Warehouse manager", "roleType": "ROLE_MANAGER", "policyAnchor": seats, "creatorId": me})
     if level["ticker"] != SEAT_TICKER:
-        raise SystemExit("the seat token's anchor names %s, not %s" % (level["ticker"], SEAT_TICKER))
+        raise SystemExit("the seat object's anchor names %s, not %s" % (level["ticker"], SEAT_TICKER))
     north.call("/dsmWallet/requestSeats", form={"levelId": level["id"], "quantity": "5"})
     marcus.approve("Pay 5 " + SEAT_TICKER)
     for _ in range(40):
@@ -400,10 +466,10 @@ def main():
     north.wallet("person", carrier, CARRIER_NAME)
     lake.wallet("person", carrier, CARRIER_NAME)
 
-    say("custody: Northgate's custody token, %d units for its account, Lakeside roots it, and the driver's wallet adopts it" % CUSTODY_UNITS)
-    custody = north.call("/dsmWallet/addCustodyToken", form={"policyAnchor": CUSTODY, "creatorId": me})
+    say("custody: Northgate's custody object, %d units for its account, Lakeside roots it, and the driver's wallet adds it" % CUSTODY_UNITS)
+    custody = north.call("/dsmWallet/addCustodyToken", form={"policyAnchor": custody_anchor, "creatorId": me})
     if custody["ticker"] != CUSTODY_TICKER:
-        raise SystemExit("the custody token's anchor names %s, not %s" % (custody["ticker"], CUSTODY_TICKER))
+        raise SystemExit("the custody object's anchor names %s, not %s" % (custody["ticker"], CUSTODY_TICKER))
     north.call("/dsmWallet/requestCustodyUnits", form={"quantity": str(CUSTODY_UNITS)})
     marcus.approve("Pay %d %s" % (CUSTODY_UNITS, CUSTODY_TICKER))
     for _ in range(40):
@@ -413,8 +479,8 @@ def main():
     else:
         raise SystemExit("the custody units never reached the account: spare is %s" % north.call("/dsmWallet/state")["custody"]["own"]["spare"])
     connection = lake.call("/dsmWallet/state")["custody"]["connections"][0]["id"]
-    lake.call("/dsmWallet/addCustodyToken", form={"policyAnchor": CUSTODY, "connectionId": connection})
-    carrier.adopt(CUSTODY, CUSTODY_TICKER)
+    lake.call("/dsmWallet/addCustodyToken", form={"policyAnchor": custody_anchor, "connectionId": connection})
+    carrier.adopt(custody_anchor, CUSTODY_TICKER)
 
     say("opening stock, so the warehouse is not empty: 200 packs of oral rehydration salts")
     ors = north.product("ORS020")
@@ -436,11 +502,13 @@ def main():
         "recordInventoryRows[0].expirationDate_year": "2028", "recordInventoryRows[0].oldQuantity": "0",
         "recordInventoryRows[0].newQuantity": "200", "save": "Save"}, raw=True)
 
-    subprocess.Popen(["python3", HERE + "/presenter.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
+    if not TERMINAL:
+        # The story bar shows the phones' screens; a terminal run has none to show.
+        subprocess.Popen(["python3", HERE + "/presenter.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
     # The last look before anyone records: the figures the first scenes rest on.
     state = north.call("/dsmWallet/state")
     check = [("Northgate owner", [w["label"] for w in state["wallets"] if w["owner"]] == ["Marcus Hale"]),
-             ("Priya's wallet connected", any(w["deviceId"] == "P58TPCQX" for w in state["wallets"])),
+             ("Priya's wallet connected", any(w["deviceId"] == short_id(priya, "P58TPCQX") for w in state["wallets"])),
              ("the driver's wallet connected at Northgate", any(w["label"] == CARRIER_NAME for w in state["wallets"])),
              ("the driver's wallet connected at Lakeside", any(w["label"] == CARRIER_NAME for w in lake.call("/dsmWallet/state")["wallets"])),
              ("Amara owns Lakeside", [w["label"] for w in lake.call("/dsmWallet/state")["wallets"] if w["owner"]] == ["Amara Osei"]),

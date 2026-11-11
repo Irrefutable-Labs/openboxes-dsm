@@ -188,6 +188,12 @@
             var to = form.querySelector('#send-to'), b = form.querySelector('button[type=submit]');
             b.disabled = !n; b.textContent = n ? 'Ship ' + n + ' units to ' + to.options[to.selectedIndex].text : 'Count what goes';
         }
+        // The receive button names the count as typed: what it sends is what was counted, not what was sent.
+        function receiveTotal(form) {
+            var n = 0;
+            Array.prototype.forEach.call(form.querySelectorAll('.count input'), function (i) { n += parseInt(i.value, 10) || 0; });
+            form.querySelector('button[type=submit]').textContent = 'Receive ' + n + ' units';
+        }
         function leaving(list) {
             var top = open.send ? sendForm() : '<button class="btn" data-new="send">Send from stock</button>';
             if (!list.length) return top + empty('Nothing sent from here is waiting for a carrier.');
@@ -257,6 +263,7 @@
                 var i = b.parentNode.querySelector('input'), top = i.max ? parseInt(i.max, 10) : Infinity;
                 i.value = Math.min(top, Math.max(0, (parseInt(i.value, 10) || 0) + parseInt(step, 10)));
                 var f = b.closest('form[data-send]'); if (f) sendTotal(f);
+                var r = b.closest('form[data-receive]'); if (r) receiveTotal(r);
                 return;
             }
             if (b.getAttribute('data-new') === 'send') { open.send = true; document.getElementById('leaving').innerHTML = leaving(state.leaving); document.getElementById('send-to').focus(); return; }
@@ -285,6 +292,8 @@
             if (id) { delete open[id]; document.getElementById('receiving').innerHTML = receiving(state.receiving); }
         });
         document.addEventListener('input', function (e) {
+            var counted = e.target.closest ? e.target.closest('form[data-receive]') : null;
+            if (counted) return receiveTotal(counted);
             var form = e.target.closest ? e.target.closest('form[data-send]') : null;
             if (!form) return;
             if (e.target.id === 'send-filter') {
