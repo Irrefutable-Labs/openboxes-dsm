@@ -10,10 +10,10 @@
 //! `real_connection` test runs it. Nothing here answers for a node.
 //!
 //! The process starts the set, writes the env config a `dsm-app-host` reads
-//! to reach it (`dsm_env_config.toml` and `fleet-ca.pem` under `--out`),
-//! prints `READY <config path>` on one line, and serves until it is told to
-//! stop (SIGTERM, SIGINT, or its stdin closing because the test that started
-//! it is gone). Then it takes every node down.
+//! to reach it (`dsm_env_config.toml` under `--out`, each member's CA in its
+//! own entry), prints `READY <config path>` on one line, and serves until it
+//! is told to stop (SIGTERM, SIGINT, or its stdin closing because the test
+//! that started it is gone). Then it takes every node down.
 
 #[path = "../../../../dsm-main/dsm_client/deterministic_state_machine/dsm_sdk/src/test_support/nodes.rs"]
 pub mod nodes;
@@ -51,13 +51,15 @@ fn endpoint_ip(endpoint: &str) -> Result<std::net::IpAddr, String> {
         .map_err(|e| format!("the node endpoint {endpoint} is not at an IP address: {e}"))
 }
 
-/// The env config a host reads to reach `fleet`: every member, its endpoint
-/// and incarnation, and the set's CA beside it, written the way the SDK's
-/// `real_connection` test writes it for the hosts it starts.
+/// The env config a host reads to reach `fleet`: every member, its endpoint,
+/// incarnation and CA, written the way `dsm-app-host`'s `real_connection`
+/// test writes it for the hosts it starts. A member is known only by a
+/// certificate from its own operator's CA, so each entry names its CA itself
+/// (`ca_cert`); here one CA issues them all, as one operator runs this set.
 fn env_config(dir: &Path, fleet: &nodes::NodeSet) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let ca = dir.join("fleet-ca.pem");
-    std::fs::write(&ca, fleet.ca_pem()).map_err(|e| format!("{}: {e}", ca.display()))?;
+    let ca_pem = std::str::from_utf8(fleet.ca_pem())
+        .map_err(|e| format!("the set's CA is not PEM text: {e}"))?;
     let mut loopback_members = 0usize;
     for endpoint in fleet.endpoints() {
         if endpoint_ip(&endpoint)?.is_loopback() {
@@ -71,13 +73,12 @@ fn env_config(dir: &Path, fleet: &nodes::NodeSet) -> Result<PathBuf, String> {
     };
     let mut cfg = format!(
         "allow_localhost = {allow_localhost}\n\
-         bitcoin_network = \"signet\"\n\
-         custom_ca_certs = [\"fleet-ca.pem\"]\n"
+         bitcoin_network = \"signet\"\n"
     );
     for (member_id, endpoint, incarnation) in fleet.members() {
         cfg.push_str(&format!(
             "\n[[nodes]]\nname = \"{member_id}\"\nendpoint = \"{endpoint}\"\n\
-             register_incarnation = \"{}\"\n",
+             register_incarnation = \"{}\"\nca_cert = \"\"\"\n{ca_pem}\"\"\"\n",
             dsm::utils::text_id::encode_base32_crockford(&incarnation)
         ));
     }
