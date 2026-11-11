@@ -115,7 +115,7 @@ class DsmTestOpenBoxes extends DsmTestProcess {
         return apiSession(page)
     }
 
-    /** A person signs in: their wallet is asked over its session and `wallet` approves, as a phone does. */
+    /** A person signs in: their wallet is asked over its connection and `wallet` approves, as a phone does. */
     Session signIn(String username, DsmTestHost wallet) {
         Session page = new Session(siteUrl)
         Map asked = page.exchange("POST", "/dsmWalletSignIn/ask", "username=${URLEncoder.encode(username, "UTF-8")}", "application/x-www-form-urlencoded")

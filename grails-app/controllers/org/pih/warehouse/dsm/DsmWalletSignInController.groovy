@@ -17,7 +17,7 @@ import org.pih.warehouse.core.User
  */
 class DsmWalletSignInController {
 
-    /** How long a browser waits on one sign-in request. */
+    /** How long a browser waits on one login. */
     private static final long SIGN_IN_REQUEST_MS = 300000L
     private static final String BROWSER_CODE_LETTERS = "23456789ABCDEFGHJKMNPQRSTVWXYZ"
     private static final SecureRandom RANDOM = new SecureRandom()
@@ -198,7 +198,7 @@ class DsmWalletSignInController {
             return
         }
         User user = seat.user as User
-        // What the host's session proved this browser's wallet to be. It lives here, out of reach of any database edit.
+        // What the host's connection proved this browser's wallet to be. It lives here, out of reach of any database edit.
         dsmAuthorityService.record(DsmAuthorityService.KIND_SIGN_IN, [wallet: seat.device as String, user: user.id,
                                                                       statement: statement ?: "Connected by scanning this browser's code"],
                 answerBody, answerSignature)

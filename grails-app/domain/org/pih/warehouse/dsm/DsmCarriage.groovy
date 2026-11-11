@@ -2,9 +2,9 @@ package org.pih.warehouse.dsm
 
 /**
  * One movement of custody units for one shipment, from this organization's own account's side:
- * - DISPATCHED: the account paid the shipment's units of its own custody token to a carrier's wallet. The carrier
+ * - DISPATCHED: the account sent the shipment's units of its own custody object to a carrier's wallet. The carrier
  *   holds the goods from here;
- * - HANDED_OVER: a wallet paid the shipment's units of a partner's custody token to the account. The goods are at
+ * - HANDED_OVER: a wallet sent the shipment's units of a partner's custody object to the account. The goods are at
  *   the door, and the shipment can be taken in.
  * The memo is the shipment's, the same one the product units travel under, so the two match without a shared system.
  */

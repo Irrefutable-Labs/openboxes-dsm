@@ -69,7 +69,7 @@ import org.pih.warehouse.shipping.ShipmentService
  * - organization A is the instance this test runs in, with two warehouses of its own and a clinic off DSM;
  * - organization B and the product registry are this application started as processes of their own, each with its
  *   own database, DSM data root and users, reached only over HTTP.
- * The one thing that crosses between them is DSM: an offer code handed over out of band, then Connect sessions and
+ * The one thing that crosses between them is DSM: an offer code handed over out of band, then connections and
  * transfers. Nothing stands in for a DSM component (docs/plans/2026-11-01-dsm-custody-integration.md).
  *
  * Environment: DSM_FLEET_BIN, DSM_APP_HOST_BIN, DSM_TEST_DATABASE_URL (see DsmTestProcess).
@@ -172,8 +172,8 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
         hostRegistryOwner = DsmTestHost.start("registry-owner-wallet", registryRoot, fleet.envConfig)
         hostBOwner = DsmTestHost.start("org-b-owner-wallet", orgBRoot, fleet.envConfig)
         hostOperator2 = DsmTestHost.start("registry-operator-wallet", registryRoot, fleet.envConfig)
-        // ERA for the fee a token's creation burns, and for what the accounts' admissions cost; the registry owner's
-        // wallet mints the seat token its operators hold.
+        // ERA for the fee that issuing an object burns, and for what the accounts' admissions cost; the registry
+        // owner's wallet issues the seat object its operators hold.
         [hostRegistry, hostA, hostA2, hostB, hostRegistryOwner].each { DsmTestHost host -> host.claimFaucet() }
         // Each instance is started with its host. On first run nobody can sign in: the first wallet to connect through
         // the sign-in page's code and sign the owner statement owns it, and that session is the owner's.
@@ -245,7 +245,7 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
     }
 
     @Transactional
-    void 'each organization registers only its own accounts and adopts the token against its own catalog'() {
+    void 'each organization registers only its own accounts and adopts the object against its own catalog'() {
         given: 'A\'s two warehouses, its clinic off DSM, its Location for B\'s warehouse, and its own product'
         actAt(Location.get("1"))
         Location warehouseA = depot("Warehouse A")
@@ -305,7 +305,7 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
     }
 
     @Transactional
-    void 'a warehouse organization cannot issue a token: only a registry does'() {
+    void 'a warehouse organization cannot issue an object: only a registry does'() {
         when:
         String refusal = apiRefused("issueToken", [productId: productId])
 
@@ -565,7 +565,7 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
     }
 
     @Transactional
-    void 'A verifies B\'s custody itself: a holdings proof over their session, with no access to anything of B\'s'() {
+    void 'A verifies B\'s custody itself: an owns proof over their connection, with no access to anything of B\'s'() {
         given:
         DsmCustodyTransfer transfer = DsmCustodyTransfer.findByShipmentAndProduct(Shipment.get(shipmentId), Product.get(productId))
 
@@ -580,7 +580,7 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
             answering.join()
         }
 
-        then: 'the proof recomputed B\'s root: B holds exactly the shipped units'
+        then: 'the proof recomputed B\'s root: B owns exactly the shipped units'
         proven.provenAmount == UNITS_SHIPPED
         proven.provenPosition > 0
     }
@@ -851,7 +851,7 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
     }
 
     /**
-     * A second registry operator with no password: the owner's wallet mints a seat token and the instance roots it as
+     * A second registry operator with no password: the owner's wallet issues a seat object and the instance roots it as
      * a level, the owner's wallet releases seats to the account, the operator's wallet connects as a person, the owner
      * assigns them a seat, and the operator signs in by approving on their wallet. Every step is what a person does.
      */
@@ -866,7 +866,7 @@ class DsmCustodyShipmentSpec extends IntegrationSpec {
                         .setTicker("RGSEAT").setAlias("RGSEAT").setDecimals(0).setGenesisSupplyEntered("5")
                         .setBurnEnabled(true).setTransferable(true).setThreshold(1).build()),
                 Envelope.PayloadCase.TOKEN_CREATE_RESPONSE).tokenCreateResponse
-        assert minted.success: "the seat token was not minted: ${minted.message}"
+        assert minted.success: "the seat object was not issued: ${minted.message}"
         String anchor = Base32Crockford.encode(minted.policyAnchor.toByteArray())
         Map level = (site.post("/dsmWallet/addLevel", [name: "Operator", roleType: "ROLE_ADMIN", policyAnchor: anchor, creatorId: me]) as Map)
         site.post("/dsmWallet/requestSeats", [levelId: level.id, quantity: "2"])

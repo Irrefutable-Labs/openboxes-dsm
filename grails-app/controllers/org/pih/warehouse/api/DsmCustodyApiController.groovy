@@ -23,7 +23,7 @@ import org.pih.warehouse.product.Product
 import org.pih.warehouse.shipping.Shipment
 
 /**
- * An organization's administrators and operators, on their own instance: their own accounts, tokens and sessions,
+ * An organization's administrators and operators, on their own instance: their own accounts, objects and connections,
  * the admissions they ask for or (at a registry) decide, the custody peers have sent them, and a view of what their
  * accounts established (docs/plans/2026-11-01-dsm-custody-integration.md). Every call acts on this instance's own
  * accounts; a DSM refusal is answered as 400 with DSM's own reason.
@@ -56,7 +56,7 @@ class DsmCustodyApiController extends BaseApiController {
         attempt { accountJson(dsmAccountService.claimNetworkFees(account(params.accountId))) }
     }
 
-    // ------------------------------------------------------------------ tokens
+    // ------------------------------------------------------------------ products' objects
 
     def tokens() {
         attempt {
@@ -81,7 +81,7 @@ class DsmCustodyApiController extends BaseApiController {
         }
     }
 
-    // ------------------------------------------------------------------ this side of a session
+    // ------------------------------------------------------------------ this side of a connection
 
     def connections() {
         render([data: DsmConnection.list().collect { connectionJson(it) }] as JSON)

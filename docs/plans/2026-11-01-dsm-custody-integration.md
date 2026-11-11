@@ -78,7 +78,7 @@ hole, named in section 8, not stubbed.
   proof". `connect.app.status` reports `CONNECT_FACT_HOLDINGS` only when the proof verified.
 - **Authored objects** (`sdk/authored_objects.rs`): signed, content-addressed, 16 KiB payload cap, appended
   under `H(DSM/object/authored-locator/v1 ‖ author ‖ topic)`. Not encrypted. "The payloads mean nothing
-  here": they establish who said what and in what order per author, nothing about balances.
+  here": they establish who said what and in what order per author, nothing about what anyone owns.
 - **Rules from the DSM repo's `CLAUDE.md`** that bind this fork's DSM-facing code: nothing fake or stubbed in
   any shape, no `TODO` markers, protobuf on every DSM wire path (no JSON), Base32 Crockford at display edges
   (no hex), no wall-clock time in DSM validity, BLAKE3 domain-separated and SPHINCS+ only, no `Co-Authored-By`
@@ -93,7 +93,7 @@ Product registry                Organization A                     Organization 
   dsm-app-host "registry"         dsm-app-host per own warehouse     dsm-app-host per own warehouse
   large fixed supply              custody                            custody
         │                               │                                  │
-        └── Connect sessions, TLS relays, bilateral transfers ─────────────┘
+        └── connections, TLS relays, bilateral transfers ──────────────────┘
                                   storage set (pinned register)
 ```
 
@@ -106,16 +106,16 @@ host: `IngressRequest` with a `RouterInvoke`/`RouterQuery`, `ArgPack` with `code
 tree already forces `protobuf-java:3.21.11`).
 
 No call in the code touches two organizations. Another organization's account is a device id on a `DsmConnection`,
-read from this account's own Connect session. Everything that crosses between organizations is either an offer
+read from this account's own connection. Everything that crosses between organizations is either an offer
 code handed over out of band, or DSM itself.
 
 ## 5. Representation of inventory units on DSM: the options
 
 The decision the owner makes. Each option is laid out with what it proves and what it does not. The owner chose
 option A. This section and section 6 are kept as written before building: section 7 is what was built, and where they
-differ (who issues a token, one instance holding both warehouses, a `PAY` scope for returns), section 7 holds.
+differ (who issues an object, one instance holding both warehouses, a `PAY` scope for returns), section 7 holds.
 
-### Option A: one fungible token per product (recommended)
+### Option A: one fungible object per product (recommended)
 
 The warehouse that first takes custody from outside DSM (in the demo, A) commits a policy for the product with
 `token.create`: ticker from the product code, 0 decimals, supply equal to the units it holds, transferable,
@@ -127,29 +127,29 @@ against the product in OpenBoxes.
   the send returned the transfer hash, and stores that hash (Base32 Crockford) against the shipment.
 - Receipt at B = B's inbox poller accepts the transfer onto B's relationship with A. OpenBoxes, before
   `createInboundTransaction`, reads B's `wallet.history` for a completed inbound transfer from A's device of
-  the product token, of the shipped amount, carrying the shipment number, and writes B's `TRANSFER_IN` only
+  the product's object, of the shipped amount, carrying the shipment number, and writes B's `TRANSFER_IN` only
   then; otherwise completion is refused with the reason ("custody of shipment X is not yet established on
   DSM"). Partial receipt: the transfer carries the shipped quantity; a short receipt is a discrepancy B
-  records in OpenBoxes and settles with a return transfer (B pays A back, which the `PAY` scope covers), not
+  records in OpenBoxes and settles with a return transfer (B sends the units back to A, which the `PAY` scope covers), not
   a change to what DSM established.
-- Proof for third parties = A (or an auditor's account connected to B) asks B for a `HOLDINGS` proof of the
-  product anchor; the fact is established only when the Sparse Merkle path recomputes B's validated root.
-  This is "the minimal proof other parties need": a balance, bound to B's identity and economic position,
+- Proof for third parties = A (or an auditor's account connected to B) asks B for an owns proof of the
+  product anchor (`HOLDINGS`); the fact is established only when the Sparse Merkle path recomputes B's validated root.
+  This is "the minimal proof other parties need": what B owns, bound to B's identity and economic position,
   no shipment contents.
 
 Proves: conservation (units are neither created nor duplicated by a shipment), exclusive custody (only the
 holder's device can move them), bilateral acceptance (B's receipt is B's own transition, not A's claim),
-issuance authority (the policy names its creator), and third-party verifiability (holdings proof).
+issuance authority (the policy names its creator), and third-party verifiability (owns proof).
 Does not prove: lot or serial identity of the units (every unit of a product is interchangeable), or physical
 reality. Cost: one SPHINCS+ signed transition per shipment, whatever the quantity.
 
-Variant A′: one token per product and lot (ticker from product code + lot). Proves which lot's units moved.
+Variant A′: one object per product and lot (ticker from product code + lot). Proves which lot's units moved.
 One `token.create` per lot received from outside DSM; otherwise identical.
 
 ### Option B: one supply-one asset per serialized unit
 
-Per Amendment A11, "an application-issued state object is an asset of supply one". Each physical unit is a
-token of supply one whose policy commits the product and the unit's serial; ownership is a balance of one.
+Per Amendment A11, "an application-issued state object is an asset of supply one". Each physical unit is an
+object of supply one whose policy commits the product and the unit's serial; ownership is owning its one unit.
 
 Proves everything A proves, per individual unit, and which exact units moved. Cost: one policy commit per
 unit on receipt from outside, N signed transfers per shipment of N units (each transfer carries a SPHINCS+
@@ -163,8 +163,8 @@ N of product P to device B against commitment H(shipment)", B publishes "accepte
 address of A's object".
 
 Proves: attribution (A signed it), order per author, and content addressing. Does not prove conservation
-(A can state anything, twice), does not stop a double-release, and gives no balance a third party can
-verify. Payloads are public to the storage set, so only commitments can go in them. On its own this is a
+(A can state anything, twice), does not stop a double-release, and gives a third party no way to verify
+what either side owns. Payloads are public to the storage set, so only commitments can go in them. On its own this is a
 signed log, not custody. It can sit beside A as a public, append-only trail of commitments if the owner
 wants one, but it adds no custody fact a transfer does not already establish bilaterally.
 
@@ -190,14 +190,14 @@ later option for serialized goods and needs nothing in this design changed, only
 2. OpenBoxes, for location A: `token.create` for the product (once), records the policy anchor on the product.
 3. Pairing (once per pair of warehouses): A's host `connect.app.offer` with `token_anchors = [product anchor]`
    and scopes `HOLDINGS` (the product) and `PAY` (the product, capped); B's host `connect.preview` then
-   `connect.approve`. A's `connect.app.sessions` holds the session; B holds A as a contact and the anchor.
+   `connect.approve`. A's `connect.app.sessions` holds the connection; B holds A as a contact and the anchor.
 4. Send (`ShipmentService.sendShipment`, before `createOutboundTransaction`): `wallet.sendSmart` from A to B,
    memo = shipment number. On success record the transfer hash on the shipment and write `TRANSFER_OUT`.
    On refusal, the shipment is not sent (the Grails transaction rolls back, the user sees DSM's reason).
 5. Receive (`ReceiptV2Service.completeReceipt`, before `createInboundTransaction`): read B's
-   `wallet.history`; require a completed inbound transfer from A's device, the product token, the shipped
+   `wallet.history`; require a completed inbound transfer from A's device, the product's object, the shipped
    quantity and the shipment number. Then write `TRANSFER_IN`. Otherwise refuse completion with the reason.
-6. Proof: A asks `connect.app.request { holdings: [product anchor] }` over the session; polls
+6. Proof: A asks `connect.app.request { holdings: [product anchor] }` over the connection; polls
    `connect.app.status` until `CONNECT_FACT_HOLDINGS`; records the proven amount and position against the
    shipment. This is what A shows anyone who asks whether B has custody.
 
@@ -206,11 +206,11 @@ one admin action each.
 
 ## 7. What was built (2026-11-02, option A, then the owner's two decisions)
 
-**Decision 1: a very large fixed supply, released on demand.** The registry issues one token per product with a
-large fixed supply (`DsmAccountService.DEFAULT_SUPPLY`, 10^15 units unless told otherwise, inside what a DSM balance
-of u64 carries) and keeps what it has not released. So no product needs a second token.
+**Decision 1: a very large fixed supply, released on demand.** The registry issues one object per product with a
+large fixed supply (`DsmAccountService.DEFAULT_SUPPLY`, 10^15 units unless told otherwise, inside what a DSM amount
+of u64 carries) and keeps what it has not released. So no product needs a second object.
 
-| Balance | What it means |
+| Owned by | What it means |
 | --- | --- |
 | Registry | Capacity to admit. It stands for no physical unit. `GET /api/dsm/tokens` shows it as `reserve`, beside `released`. |
 | Warehouse | Units in that warehouse's custody. |
@@ -224,8 +224,8 @@ shows. A warehouse organization may hold several accounts for its own warehouses
 
 **Release authority.** Units leave the registry in one way only. These controls enforce it:
 
-- **DSM holds the request.** An admission is a `PAY` request over the organization's session with the registry, and
-  the session grants no spending scope, so DSM leaves it `AWAITING_APPROVAL` on the registry's account until that
+- **DSM holds the request.** An admission is a `PAY` request over the organization's connection with the registry, and
+  the connection grants no spending scope, so DSM leaves it `AWAITING_APPROVAL` on the registry's account until that
   account is told. An offer that asks for any spending scope is refused at the registry, which grants nothing at all.
 - **Two different operators.** The registry's account is told only after `openboxes.dsm.registry.approvalsRequired`
   different operators approved (default 2). Each approval and the decision are recorded with who made it. One
@@ -238,7 +238,7 @@ shows. A warehouse organization may hold several accounts for its own warehouses
 - **Recording draws once.** Stock cannot be recorded at a DSM warehouse without established admitted units, and each
   recording draws on the admission, so the same units cannot be recorded twice. The organization establishes the
   admission from `CONNECT_FACT_PAID` plus its own account's history row carrying exactly the memo DSM builds for that
-  session and request, and one credit can establish only one admission.
+  connection and request, and one credit can establish only one admission.
 
 Every OpenBoxes inventory transaction at a DSM warehouse is backed by a DSM transition made before it is written:
 
@@ -251,7 +251,7 @@ Every OpenBoxes inventory transaction at a DSM warehouse is backed by a DSM tran
 | Stock transfer between two of the organization's own warehouses | transfer account to account, held at the destination before both mirrored transactions; to another organization it is refused, since it would write that organization's inventory here | `InventoryService.transferStock` → `transferBetweenWarehouses` |
 | Consumption, expiry, damage, debit adjustment, a count that found less | burn at the warehouse (`token.burn`), memo `openboxes:transaction:<number>` | `backStockChange`, from `InventoryService.adjustStock`, `saveRecordInventoryCommand`, `CycleCountTransactionService`, `InventoryController.saveDebitTransaction/saveAdjustmentTransaction/saveCreditTransaction` |
 | Credit adjustment, a count that found more | draws admitted units already held | same → `drawAdmitted` |
-| Proof for a third party | holdings proof over the Connect session, asked by the side that offered it, recorded only on `CONNECT_FACT_HOLDINGS` | `establishHoldingsProof`, `POST /api/dsm/transfers/<id>/proof` |
+| Proof for a third party | owns proof over the connection, asked by the side that offered it, recorded only on `CONNECT_FACT_HOLDINGS` | `establishHoldingsProof`, `POST /api/dsm/transfers/<id>/proof` |
 
 A shipment from a DSM warehouse to a location it has no connection to is refused (custody cannot leave DSM). A
 shipment from a non-DSM location to a DSM warehouse is sent as OpenBoxes always sent it. Warehouses with no account
@@ -260,13 +260,13 @@ are untouched.
 Setting up, on each instance by whoever runs it:
 
 1. **Accounts.** Register this organization's own hosts (`POST /api/dsm/accounts/warehouses` or `/registries`).
-2. **Tokens.** The registry issues (`POST /api/dsm/tokens`). Each organization adopts the anchor against a product of
+2. **Objects.** The registry issues (`POST /api/dsm/tokens`). Each organization adopts the anchor against a product of
    its own catalog, under whatever code it has there (`POST /api/dsm/tokens/adoptions`); its hosts fetch the policy
    themselves and re-hash it to the anchor.
-3. **Sessions.** The offering side makes a code (`POST /api/dsm/connections/offers`) and hands it over out of band;
+3. **Connections.** The offering side makes a code (`POST /api/dsm/connections/offers`) and hands it over out of band;
    the other side reads and approves it (`/accepts`); the offering side records what its account now holds
-   (`/confirmations`). Warehouse sessions grant holdings proofs over the tokens known at the offer, and a new product
-   needs a new offer, which moves the record to the newer session.
+   (`/confirmations`). Warehouse connections grant owns proofs over the objects known at the offer, and a new product
+   needs a new offer, which moves the record to the newer connection.
 
 Idempotence: the sending account's own history is the record of what it sent, so a move retried after a failed
 OpenBoxes save is not sent twice; a burn or a draw is recorded under the transaction's memo and refused if that memo
@@ -279,8 +279,8 @@ unique per peer, not globally.
 | --- | --- |
 | The DSM wire, compiled to Java at build time | `src/main/proto/dsm_app.proto` (vendored from the DSM revision in `src/main/proto/DSM_REVISION`), `com.google.protobuf` Gradle plugin 0.8.10 with protoc `protobufVersion` (3.21.11, the runtime the tree already forces) |
 | The ingress client | `src/main/groovy/org/pih/warehouse/dsm/DsmHostClient.groovy` (frames requests, reads answers, decides nothing), `Base32Crockford.groovy` (DSM's encoder mirrored), `DsmSteps`, `DsmHostException`, `DsmCustodyException` |
-| Each instance's records | `grails-app/domain/org/pih/warehouse/dsm/`: `DsmWarehouseAccount`, `DsmProductToken`, `DsmConnection` (this account's side of a session), `DsmCustodyTransfer` (SHIPMENT, STOCK_TRANSFER, INBOUND, ADMITTED or BURN), `DsmAdmission`, and at a registry `DsmReleaseApproval` and `DsmReleaseDecision`; migration `grails-app/migrations/0.9.x/changelog-2026-11-01-1200-create-dsm-custody-tables.xml` |
-| The services | `grails-app/services/org/pih/warehouse/dsm/`: `DsmAccountService` (accounts, tokens, this side of a session), `DsmAdmissionService` (both sides of an admission), `DsmCustodyService` (the hooks above) |
+| Each instance's records | `grails-app/domain/org/pih/warehouse/dsm/`: `DsmWarehouseAccount`, `DsmProductToken`, `DsmConnection` (this account's side of a connection), `DsmCustodyTransfer` (SHIPMENT, STOCK_TRANSFER, INBOUND, ADMITTED or BURN), `DsmAdmission`, and at a registry `DsmReleaseApproval` and `DsmReleaseDecision`; migration `grails-app/migrations/0.9.x/changelog-2026-11-01-1200-create-dsm-custody-tables.xml` |
+| The services | `grails-app/services/org/pih/warehouse/dsm/`: `DsmAccountService` (accounts, objects, this side of a connection), `DsmAdmissionService` (both sides of an admission), `DsmCustodyService` (the hooks above) |
 | The API | `grails-app/controllers/org/pih/warehouse/api/DsmCustodyApiController.groovy`, under `/api/dsm`: `accounts`, `tokens`, `connections`, `admissions`, `releases` (`/approvals`, `/declines`, `/decisions`), `inbound`, `transfers`. Listing is for admins, acting for superusers; a DSM refusal is a 400 with DSM's reason |
 | The storage set for tests | `dsm/fleet/`: a Rust crate that includes the SDK's own node harness from the DSM checkout beside this one and runs it as a process |
 | The test | `src/integration-test/groovy/org/pih/warehouse/slice/spec/dsm/DsmCustodyShipmentSpec.groovy`, with `common/dsm/DsmTestFleet`, `DsmTestHost` and `DsmTestOpenBoxes`: real storage nodes, one host per account, and three OpenBoxes instances with three MySQL databases. Organization A is the instance the spec runs in; organization B and the registry are the application started as processes of their own, reached only over HTTP |
@@ -288,8 +288,9 @@ unique per peer, not globally.
 ### Building and running
 
 ```bash
-# DSM at origin/main beside this checkout, with the two binaries the tests start
-git -C ../dsm worktree add --detach ../dsm-main origin/main
+# DSM beside this checkout, at the revision the wire was vendored from (src/main/proto/DSM_REVISION), with the two
+# binaries the tests start
+git -C ../dsm worktree add --detach ../dsm-main "$(cut -d' ' -f1 src/main/proto/DSM_REVISION)"
 (cd ../dsm-main && cargo build --release --locked -p dsm-app-host)
 (cd dsm/fleet && CARGO_TARGET_DIR=../../../dsm-main/target cargo build --release)
 
@@ -309,8 +310,9 @@ receive and consume, with admissions decided on the registry's instance and inbo
 
 ### The live demo
 
-`dsm/demo/` brings the three organizations up as running services: see `dsm/demo/README.md`. One complete transfer was
-walked through in the browser on 2026-11-02 against these services.
+`dsm/demo/` brings the organizations up as running services on the beta network, with phones or with terminal
+wallets: see `dsm/demo/README.md`. One complete transfer was walked through in the browser on 2026-11-02 against these
+services; the whole story, thirteen beats, was walked end to end without phones on 2026-11-11 (`dsm/demo/walk.py`).
 
 | Step | Where it was done |
 | --- | --- |
@@ -318,12 +320,12 @@ walked through in the browser on 2026-11-02 against these services.
 | Create, pick and send the shipment | OpenBoxes' Create Outbound wizard |
 | See it in B's inbound list, receive it, see B's stock on hand | OpenBoxes' screens |
 | Register a host, claim network fees | `/api/dsm/accounts`: no screen |
-| Issue or adopt a token, view reserve and holdings | `/api/dsm/tokens`: no screen |
+| Issue or adopt an object, view reserve and what each account owns | `/api/dsm/tokens`: no screen |
 | Offer, accept and confirm a connection | `/api/dsm/connections`: no screen |
-| Request an admission, read its status | `/api/dsm/admissions`: no screen |
+| Request an admission, read its result | `/api/dsm/admissions`: no screen |
 | Approve or decline a release, read the decisions | `/api/dsm/releases`: no screen |
 | Take in custody a peer sent | `/api/dsm/inbound`: no screen, and required before B can receive |
-| View transfers, ask for a holdings proof | `/api/dsm/transfers`: no screen |
+| View transfers, ask for an owns proof | `/api/dsm/transfers`: no screen |
 
 ## 8. The test plan as written before building
 
@@ -336,7 +338,7 @@ walked through in the browser on 2026-11-02 against these services.
   `dsm-app-host` processes (`DSM_APP_HOST_BIN`, built from the DSM checkout), creates two warehouse
   locations mapped to them, one product, one shipment; then drives `sendShipment` and `completeReceipt`
   through the real services and asserts: the transfer hash on the shipment, B's `TRANSFER_IN` written only
-  after DSM shows the accepted transfer, B's balance, A's `HOLDINGS` fact, and the negative cases (receipt
+  after DSM shows the accepted transfer, what B owns, A's `HOLDINGS` fact, and the negative cases (receipt
   completion refused before the transfer lands; a send refused when A holds fewer units than shipped).
 - Prerequisites on this machine: Docker (present), Postgres (present, the SDK's own test databases are on
   it), the DSM checkout at origin/main beside this one (present, `../dsm-main`), Java 8 (absent: Grails
@@ -348,7 +350,7 @@ walked through in the browser on 2026-11-02 against these services.
 - **Partial receipts.** DSM moves the shipped quantity; a receipt that records fewer units leaves the remainder
   in the destination account's custody while OpenBoxes shows fewer. Both resolutions are backed today: a return
   shipment to the origin moves them back (the receiving organization makes its own offer to the origin first if it
-  wants holdings proofs that way); a debit adjustment at the destination burns them. Which one a site uses is its
+  wants owns proofs that way); a debit adjustment at the destination burns them. Which one a site uses is its
   own process.
 - **Corrections are forward amendments (owner's ruling, 2026-11-02).** Nothing DSM established is ever reversed: a
   correction is a new transition that names what it amends, and the original stays in the record. Not built yet:
@@ -362,35 +364,35 @@ DSM Connect links an application to a person's wallet, as `wildstate-release/doc
 
 - **One uniform way of connecting.** Everyone scans a connect code with their wallet and approves it on the wallet's Apps
   screen. No API steps and no technical knowledge.
-- **The wallet is the person.** Sign-in, identity and authorization come from it. As in Wildstate, OpenBoxes may keep a
+- **The wallet is the person.** Sign-in, the passport and authorization come from it. As in Wildstate, OpenBoxes may keep a
   Web2 login token after connecting, which is a convenience and never DSM authority.
-- **Tokens are created in the wallet.** The wallet has its own creation wizard, and a created token's whole supply goes to
+- **Objects are issued in the wallet.** The wallet has its own creation wizard, and an issued object's whole supply goes to
   its creator. So the cap is set once, and what has not been released stays with the creator and is counted.
 - **Organization, warehouses, then people.** Each person has their own wallet. The owner also wants a device tree, but its
   store is not built at DSM `ad831f53e` (`CONFORMANCE_GAPS.md`: the add-device routes were deleted), so it stays a visible
   hole until DSM builds it.
-- **Permissions are seats in custom DLVs.** Each access level is a token whose supply is the cap, released by hand as the
+- **Permissions are seats in custom DLVs.** Each access level is an object whose supply is the cap, released by hand as the
   organization grows, so every seat is accounted for. A seat is one unit locked in a vault. These are DSM's existing
   vaults used for another purpose, proven by the state machine, with nothing new in Core: SoFi is one use of DLVs, not the
   only one. `escrow.lock` already takes the agreed bytes `X` and up to 16 outcomes, each naming who decides it (1 to 4
-  device ids) and who it pays:
-  - **Assignment:** the person's identity is hashed into `X`, so the vault's terms name its holder.
-  - **Revocation:** an outcome decided by the authority pays the authority. It is the sale mechanism without a sale:
-    authority instead of value. It is a forward step, and the holder's device takes no part in it. The authority then
+  device ids) and who it sends to:
+  - **Assignment:** the person's passport is hashed into `X`, so the vault's terms name its holder.
+  - **Revocation:** an outcome decided by the authority sends the unit to the authority. It is the sale mechanism without a
+    sale: authority instead of value. It is a forward step, and the holder's device takes no part in it. The authority then
     reassigns the seat with a new vault.
   - **Succession:** an outcome can name several deciders, so a boss's superior can act when a boss leaves.
 - **Appliances, optional.** An organization may use the Pico and the TROPIC01 for device identity and anti-cloning.
 - **Offline use, such as doors and labs, alongside badges.** A reader keeps a signed roster of seats from its last sync and
-  checks that the person's device can sign for the identity a seat names, so it keeps working with the internet down. An
+  checks that the person's device can sign for the passport a seat names, so it keeps working with the internet down. An
   offline reader cannot learn of a revocation until it next syncs, so each door needs its own rule for that. Unmeasured
   risk: a DSM signature is about 50 KB, which may be too slow for a door over Bluetooth.
 
 Read from DSM's proto and specs, not yet exercised: who may build a release (A12 says the release is built on a final
-verdict by the wallet that branch pays), how a person proves a seat they hold through a vault, and how an application
+verdict by the wallet that branch sends to), how a person proves a seat they hold through a vault, and how an application
 reads a vault's terms.
 
 - **Sign-in is bound to the browser (DSM Amendment A28).** A connected wallet cannot answer a new code, so a returning person
-  is asked over their session to sign one line naming the organization, the person and a code the asking browser shows. It
+  is asked over their connection to sign one line naming the organization, the person and a code the asking browser shows. It
   rests on the person comparing that code. Requests per wallet are limited.
 
 - **Open: why wallets on `fix/beta-requirements-completion` cannot claim ERA.** Measured 2026-11-02/03 on the beta fleet.
@@ -416,7 +418,7 @@ reads a vault's terms.
   A host must also match the wallets connecting to it (`connect.app.accept` compares signed bytes).
 
 - **Measured on the live fleet, 2026-11-03, with a real wallet on `RFGYB0PQ8XK`:** the wallet connected and became the
-  owner; signing in by approving on the phone worked with no password; a 25-unit level token was created in the wallet's own
+  owner; signing in by approving on the phone worked with no password; a 25-unit level object was issued in the wallet's own
   wizard; 3 seats were released by approving on the phone; a seat was locked in a real vault; the owner's wallet found it,
   showed "revoke: you decide", and decided it; the verdict went final; the account released the vault with no part played
   by the holder's device. The count ended at cap 25, assigned 0, spare 3. The holder in that run was the hospital's account,

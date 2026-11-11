@@ -64,7 +64,7 @@
                 if (sign) return 'Asked the phone to sign: "' + sign[1] + '"';
                 var pay = t.match(/pay (\d+) of \S+ \(openboxes:([a-z]+)/);
                 if (pay) return pay[2] === 'seats' ? 'Asked the owner\'s phone to release ' + pay[1] + ' seats' : 'Asked the registry\'s phone to approve ' + pay[1] + ' units';
-                if (/prove|holdings/i.test(t)) return 'Asked the partner\'s account to prove what it holds';
+                if (/prove|holdings/i.test(t)) return 'Asked the partner\'s account to prove what it owns';
                 return 'Asked the phone';
             }
             if (n === 'relay: answer') {

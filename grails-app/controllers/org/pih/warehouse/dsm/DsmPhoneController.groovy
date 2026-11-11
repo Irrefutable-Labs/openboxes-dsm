@@ -115,7 +115,7 @@ class DsmPhoneController {
         }
     }
 
-    /** Hand a sent shipment to a carrier: the account pays its custody units to that wallet. */
+    /** Hand a sent shipment to a carrier: the account sends its custody units to that wallet. */
     def dispatch() {
         attempt {
             DsmCarriage carriage = dsmCarriageService.dispatch(params.memo, wallet(params.walletId))

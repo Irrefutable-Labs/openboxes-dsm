@@ -37,7 +37,7 @@ import org.pih.warehouse.dsm.DsmHostClient.Route
 
 /**
  * People and their authority, through their own DSM wallets (DSM Amendment A11, as Wildstate connects its players).
- * A wallet connects by scanning a code. Levels of access are tokens made in a wallet, seats are units of them locked in
+ * A wallet connects by scanning a code. Levels of access are objects issued in a wallet, seats are units of them locked in
  * vaults on the storage nodes (SoFi section 19.9), and what a person may do here is read from those vaults each time
  * they sign in. Everything goes through DSM's own routes; nothing here decides what a vault means.
  */
@@ -144,7 +144,7 @@ class DsmWalletService {
     }
 
     /**
-     * The wallet that has answered `offerDigest`, by the session the account now holds; null until one has. A `name` is
+     * The wallet that has answered `offerDigest`, by the connection the account now holds; null until one has. A `name` is
      * kept for a wallet no OpenBoxes user will ever stand behind, a carrier's for instance.
      */
     DsmWallet walletAnswering(String offerDigest, String name = null) {
@@ -248,7 +248,7 @@ class DsmWalletService {
         }
         ConnectSessionV1 held = dsmAuthorityService.sessionOf(wallet.sessionId)
         if (!held) {
-            throw new DsmCustodyException("that wallet's session is not connected")
+            throw new DsmCustodyException("that wallet's connection is not connected")
         }
         String device = Base32Crockford.encode(held.peerDeviceId.toByteArray())
         if (!asked) {
@@ -280,14 +280,14 @@ class DsmWalletService {
     }
 
     /**
-     * Who this wallet may sign in as, read now: the session the host holds names the wallet, and DSM decides the rest.
+     * Who this wallet may sign in as, read now: the connection the host holds names the wallet, and DSM decides the rest.
      *
      * @return the user, the location to work at and the proven wallet; null when it holds nothing here
      */
     Map signInFor(DsmWallet wallet) {
         ConnectSessionV1 held = dsmAuthorityService.sessionOf(wallet.sessionId)
         if (!held || !wallet.user) {
-            log.warn("sign-in for ${wallet.deviceId.take(8)}: ${held ? "no user bound" : "the host holds no connected session " + wallet.sessionId.take(8)}")
+            log.warn("sign-in for ${wallet.deviceId.take(8)}: ${held ? "no user bound" : "the host holds no connection " + wallet.sessionId.take(8) + " that is connected"}")
             return null
         }
         String device = Base32Crockford.encode(held.peerDeviceId.toByteArray())
@@ -303,7 +303,7 @@ class DsmWalletService {
 
     /**
      * Ask a connected wallet to sign its person in. A connected wallet cannot answer a new code, so it is asked over the
-     * session it already has: a signing request, which no grant covers and which waits on the person's phone (Apps,
+     * connection it already has: a signing request, which no grant covers and which waits on the person's phone (Apps,
      * Waiting). The words name the organization, the person and the code the asking browser shows, so someone who types
      * another person's name gets in only if that person approves a code they cannot see on their own screen.
      *
@@ -324,7 +324,7 @@ class DsmWalletService {
 
     private long askToSign(DsmWallet wallet, String statement) {
         ConnectAppRequestIntentV1 intent = ConnectAppRequestIntentV1.newBuilder()
-                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the session id")))
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the connection id")))
                 .setSign(ConnectSignV1.newBuilder().setStatement(statement))
                 .build()
         return DsmSteps.reply(
@@ -332,7 +332,7 @@ class DsmWalletService {
                 ConnectReplyV1.ReplyCase.REQUEST, "connect.app.request").request.seq
     }
 
-    /** Takes one sign-in ask if the limits allow it, and forgets whatever has aged out, so the record stays bounded. */
+    /** Takes one login ask if the limits allow it, and forgets whatever has aged out, so the record stays bounded. */
     private static synchronized boolean reserveSignInAsk(String walletId, String client) {
         long now = System.currentTimeMillis()
         SIGN_IN_LAST_BY_CLIENT.values().removeAll { Long at -> now - at >= SIGN_IN_CLIENT_INTERVAL_MS }
@@ -353,13 +353,13 @@ class DsmWalletService {
     }
 
     /**
-     * What has become of a sign-in request: the wallet's proof, verified by the account, or its refusal.
+     * What has become of a login: the wallet's proof, verified by the account, or its refusal.
      *
      * @return PROVEN or WAITING, or DECLINED with the wallet's reason after it
      */
     Map signatureAnswer(DsmWallet wallet, long seq, String statement) {
         ConnectRequestRefV1 ref = ConnectRequestRefV1.newBuilder()
-                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the session id")))
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the connection id")))
                 .setSeq(seq)
                 .build()
         Envelope envelope = dsmAccountService.clientFor(wallet.account).invokeQuietly("connect.app.status", ref)
@@ -378,11 +378,11 @@ class DsmWalletService {
     // ------------------------------------------------------------------ levels of access
 
     /**
-     * A level of access, from the anchor of a token its creator made in their own wallet. The account roots it by
+     * A level of access, from the anchor of an object its creator issued in their own wallet. The account roots it by
      * fetching the policy itself and re-hashing it to the anchor.
      */
     DsmAccessLevel addLevel(String name, String roleType, String policyAnchor, DsmWallet creator) {
-        Base32Crockford.decodeId32(policyAnchor, "the token's anchor")
+        Base32Crockford.decodeId32(policyAnchor, "the object's anchor")
         String ticker = dsmAccountService.rootAnchorAt(homeAccount(), policyAnchor)
         DsmAccessLevel level = new DsmAccessLevel(
                 name: name?.trim(),
@@ -404,7 +404,7 @@ class DsmWalletService {
             throw new DsmCustodyException("release at least one seat")
         }
         ConnectAppRequestIntentV1 intent = ConnectAppRequestIntentV1.newBuilder()
-                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(level.creator.sessionId, "the session id")))
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(level.creator.sessionId, "the connection id")))
                 .setPay(ConnectPayV1.newBuilder()
                         .setPolicyCommit(ByteString.copyFrom(Base32Crockford.decodeId32(level.policyAnchor, "the anchor")))
                         .setAmount(quantity)
@@ -415,7 +415,7 @@ class DsmWalletService {
                 ConnectReplyV1.ReplyCase.REQUEST, "connect.app.request").request.seq
     }
 
-    /** What the account holds of a level's token and the supply its policy fixed, as its own balance list reports them. */
+    /** What the account holds of a level's object and the supply its policy fixed, as its own `balance.list` reports them. */
     Map supplyOf(DsmAccessLevel level) {
         BalanceGetResponse row = balanceRow(homeAccount(), level.policyAnchor)
         return [spare: row ? row.available : 0L, cap: row?.genesisSupplyDisplay ?: null]
@@ -442,7 +442,7 @@ class DsmWalletService {
         }
         ConnectSessionV1 held = dsmAuthorityService.sessionOf(holder.sessionId)
         if (!held || Base32Crockford.encode(held.peerDeviceId.toByteArray()) != holder.deviceId) {
-            throw new DsmCustodyException("this account's session does not name that wallet")
+            throw new DsmCustodyException("this account's connection does not name that wallet")
         }
         DsmWarehouseAccount home = homeAccount()
         if (home.deviceId != dsmAuthorityService.hostDevice()) {

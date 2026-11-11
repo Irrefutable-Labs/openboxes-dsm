@@ -43,11 +43,11 @@ import org.pih.warehouse.shipping.ShipmentType
  * Custody of inventory units on DSM, for this organization's own warehouses
  * (docs/plans/2026-11-01-dsm-custody-integration.md).
  *
- * A product's units are a DSM token of 0 decimals a registry committed; a warehouse account's balance of it is the
+ * A product's units are a DSM object of 0 decimals a registry committed; what a warehouse account owns of it is the
  * units in that warehouse's custody. Every OpenBoxes inventory transaction at a DSM warehouse is backed by a DSM
  * transition made before it is written:
  * - a shipment is a transfer from the origin's account to the destination's device. The destination may be another
- *   organization: this instance then knows it only as a device id on a Connect session, and what happens at the
+ *   organization: this instance then knows it only as a device id on a connection, and what happens at the
  *   other end is that organization's own business, on its own instance;
  * - units a peer sent are taken in here from this account's own history, as a shipment record of this instance's
  *   own, and received through the ordinary receiving workflow;
@@ -55,12 +55,12 @@ import org.pih.warehouse.shipping.ShipmentType
  * - units that enter custody from outside DSM (a receipt from a supplier, a count that found stock, a credit
  *   adjustment) are drawn from an admission the registry's operators approved (DsmAdmissionService);
  * - units that leave custody (consumption, expiry, damage, a count that found less) are burned at the warehouse.
- * The proof shown to others is a holdings proof the asking account verifies against the holder's root over their
- * DSM Connect session. Business records stay on each organization's own instance; what goes to DSM is the token, the
+ * The proof shown to others is an owns proof the asking account verifies against the holder's root over their
+ * DSM connection. Business records stay on each organization's own instance; what goes to DSM is the object, the
  * quantity and a memo naming the document, sealed to the two accounts.
  *
  * Nothing a host answers is taken as evidence: a send is recorded from the sending account's own history, a receipt
- * from the receiving account's, and holdings from the fact the asking account established (DSM Amendment A11).
+ * from the receiving account's, and what a peer owns from the fact the asking account established (DSM Amendment A11).
  */
 @Transactional
 class DsmCustodyService {
@@ -156,7 +156,7 @@ class DsmCustodyService {
     /**
      * What peers have sent this organization's accounts that it has not yet made a shipment record of: each account's
      * inbox taken in, then its own history read. A row counts only if it comes from a connected peer's warehouse and
-     * is of a token this organization adopted. Where the peer's shipments are carried (DsmCustodyToken), each document
+     * is of an object this organization adopted. Where the peer's shipments are carried (DsmCustodyToken), each document
      * also says how it stands at the door: `carriage.required`, and the custody units `handedOver` so far, `by` whom.
      */
     List<Map> inboundCustody() {
@@ -467,28 +467,28 @@ class DsmCustodyService {
         return backed
     }
 
-    // ------------------------------------------------------------------ the holdings proof
+    // ------------------------------------------------------------------ the owns proof
 
     /**
-     * The proof a third party is shown: the peer's holdings of the product's token, proven by the peer's account and
-     * verified by this one against the peer's validated economic root over their Connect session (DSM Amendment
+     * The proof a third party is shown: what the peer owns of the product's object, proven by the peer's account and
+     * verified by this one against the peer's validated economic root over their connection (DSM Amendment
      * A11). Recorded on the transfer once this account holds the fact; an answer alone establishes nothing. This
-     * account must be the one that made the offer: the session's application side is the side that may ask.
+     * account must be the one that made the offer: the connection's application side is the side that may ask.
      */
     DsmCustodyTransfer establishHoldingsProof(DsmCustodyTransfer transfer) {
         if (!transfer.peerDeviceId) {
-            throw new DsmCustodyException("a ${transfer.kind} has no peer whose holdings could be proven")
+            throw new DsmCustodyException("a ${transfer.kind} has no peer that could prove what it owns")
         }
         DsmConnection connection = DsmConnection.findByAccountAndPeerDeviceId(transfer.account, transfer.peerDeviceId)
         if (connection?.side != DsmConnection.SIDE_OFFERED) {
             throw new DsmCustodyException(
                     "${transfer.account} made no offer to ${transfer.peerDeviceId}: only the side that offered a " +
-                            "session may ask over it")
+                            "connection may ask over it")
         }
         DsmProductToken token = dsmAccountService.tokenFor(transfer.product)
         ByteString anchor = ByteString.copyFrom(Base32Crockford.decodeId32(token.policyAnchor, "the anchor"))
         ConnectAppRequestIntentV1 intent = ConnectAppRequestIntentV1.newBuilder()
-                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(connection.sessionId, "the session id")))
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(connection.sessionId, "the connection id")))
                 .setHoldings(ConnectHoldingsV1.newBuilder().addPolicyCommits(anchor))
                 .build()
         ConnectAppStatusV1 proven = askAndAwait(transfer.account, intent,
@@ -498,7 +498,7 @@ class DsmCustodyService {
         VerifiedHoldingV1 holding = proven.holdingsList.find { VerifiedHoldingV1 h -> h.policyCommit == anchor }
         if (!holding) {
             throw new DsmHostException("connect.app.status",
-                    "the holdings fact names no balance of ${token.ticker} (${proven.holdingsList.size()} holdings)")
+                    "the owns fact names nothing owned of ${token.ticker} (${proven.holdingsList.size()} objects)")
         }
         transfer.provenAmount = holding.amount
         transfer.provenPosition = proven.holdingsPosition
@@ -580,7 +580,7 @@ class DsmCustodyService {
         return transfer
     }
 
-    /** Units leaving custody: burned at `warehouse` under the token's policy (`token.burn`). */
+    /** Units leaving custody: burned at `warehouse` under the object's policy (`token.burn`). */
     private DsmCustodyTransfer burn(DsmWarehouseAccount warehouse, DsmProductToken token, int quantity, String memo) {
         DsmCustodyTransfer recorded = DsmCustodyTransfer.findByKindAndMemoAndProduct(DsmCustodyTransfer.KIND_BURN, memo, token.product)
         if (recorded) {
@@ -625,7 +625,7 @@ class DsmCustodyService {
 
     /**
      * `account`'s own history must hold the credit: its inbox taken in now, then a row of exactly the units from
-     * `fromDevice`, of the product's token, carrying the memo. The memo travels in the sealed terms the signed
+     * `fromDevice`, of the product's object, carrying the memo. The memo travels in the sealed terms the signed
      * operation commits to, so a row that carries it was sent for this move. Waits up to the step bound.
      */
     private TransactionInfo awaitAccepted(DsmWarehouseAccount account, String fromDevice, DsmProductToken token,
@@ -699,8 +699,8 @@ class DsmCustodyService {
     }
 
     /**
-     * Ask the peer of `asking`'s session for `intent` and wait until this account's own status of the request
-     * satisfies `done`. A declined or failed request is reported with the reason the status carries.
+     * Ask the peer of `asking`'s connection for `intent` and wait until this account's own result of the request
+     * satisfies `done`. A declined or failed request is reported with the reason the result carries.
      */
     private ConnectAppStatusV1 askAndAwait(DsmWarehouseAccount asking, ConnectAppRequestIntentV1 intent, String what,
                                            Closure<Boolean> done) {

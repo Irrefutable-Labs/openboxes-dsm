@@ -3,12 +3,12 @@ package org.pih.warehouse.dsm
 import org.pih.warehouse.core.Location
 
 /**
- * One assignment of one seat: a unit of an access level's token locked in a vault on the storage nodes, whose terms
+ * One assignment of one seat: a unit of an access level's object locked in a vault on the storage nodes, whose terms
  * commit to who holds it and whose outcomes say who can take it back. A vault is the record: this row only remembers
  * where to find it, and every check reads the vault itself.
  *
- * Nothing is ever undone. Revoking is a decision the authority signs in their own wallet; the vault then pays the
- * account, and the seat is assigned again by a new vault, so the history of who held what stays.
+ * Nothing is ever undone. Revoking is a decision the authority signs in their own wallet; the vault then sends the
+ * unit to the account, and the seat is assigned again by a new vault, so the history of who held what stays.
  */
 class DsmSeat {
 
@@ -30,10 +30,10 @@ class DsmSeat {
     /** Where this seat gives access. */
     Location location
 
-    /** The account that locked the unit and that revocation pays. */
+    /** The account that locked the unit and that revocation sends it to. */
     DsmWarehouseAccount account
 
-    /** The exact bytes the vault's external commitment commits to: the holder's identity is in them. */
+    /** The exact bytes the vault's external commitment commits to: the holder's passport is in them. */
     String agreement
 
     /** The vault, its verdict cell and its external commitment, Base32 Crockford. */
@@ -45,7 +45,7 @@ class DsmSeat {
 
     Date dateCreated
 
-    /** When the vault paid the seat back to the account. */
+    /** When the vault sent the seat back to the account. */
     Date dateReturned
 
 

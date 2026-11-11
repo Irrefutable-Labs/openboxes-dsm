@@ -67,8 +67,8 @@ class RoleInterceptor {
     def static superuserControllers = []
     def static superuserActions = [
         'console'                   : ['index', 'execute'],
-        // DSM setup acts for the organization's accounts: registering a host, issuing a product's token, connecting
-        // two accounts, asking for a holdings proof
+        // DSM setup acts for the organization's accounts: registering a host, issuing a product's object, connecting
+        // two accounts, asking for an owns proof
         'dsmCustodyApi'             : ['registerWarehouse', 'registerRegistry', 'claimFees', 'issueToken', 'adoptToken', 'offerConnection', 'acceptConnection', 'confirmConnection'],
         'inventory'                 : ['createInboundTransfer', 'createConsumed', 'editTransaction', 'deleteTransaction', 'saveTransaction'],
         'inventoryItem'             : ['adjustStock', 'transferStock'],

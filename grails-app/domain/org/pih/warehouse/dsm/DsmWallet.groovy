@@ -4,22 +4,22 @@ import org.pih.warehouse.core.User
 
 /**
  * A person's DSM wallet, connected to this organization's account by scanning a connect code. The wallet holds its own
- * keys on the person's phone; OpenBoxes knows it by what the account's own session names. It is how that person signs
+ * keys on the person's phone; OpenBoxes knows it by what the account's own connection names. It is how that person signs
  * in: a user has no other way of proving who they are here once a wallet is bound to them.
  */
 class DsmWallet {
 
     String id
 
-    /** The organization's account whose session this is. */
+    /** The organization's account whose connection this is. */
     DsmWarehouseAccount account
 
-    /** The wallet's device id, genesis and signing key, Base32 Crockford, read from the account's session. */
+    /** The wallet's device id, genesis and signing key, Base32 Crockford, read from the account's connection. */
     String deviceId
     String genesis
     String signingKey
 
-    /** The session the wallet last connected over, and the offer it answered. */
+    /** The wallet's latest connection, and the offer it answered. */
     String sessionId
     String offerDigest
 

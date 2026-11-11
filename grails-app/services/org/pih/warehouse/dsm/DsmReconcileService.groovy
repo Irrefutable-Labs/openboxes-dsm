@@ -18,7 +18,7 @@ import org.pih.warehouse.product.Product
 /**
  * Whether the books agree with DSM. For each account and product:
  *
- *     books on hand = DSM holding - admitted units not yet recorded - units here not yet received
+ *     books on hand = what the account owns on DSM - admitted units not yet recorded - units here not yet received
  *
  * The books are added up from the stock transactions, not read from the availability table the screens use, so a direct
  * edit of either shows up. DSM is the authority: a correction moves the books to match it, as a new adjustment, and never

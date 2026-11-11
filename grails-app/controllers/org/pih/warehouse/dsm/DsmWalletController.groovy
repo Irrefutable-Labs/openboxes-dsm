@@ -11,7 +11,7 @@ import org.pih.warehouse.core.User
 import org.pih.warehouse.product.ProductAvailability
 
 /**
- * The organization's DSM screen: wallets, levels of access, seats, partners, product tokens, admissions and custody
+ * The organization's DSM screen: wallets, levels of access, seats, partners, products' objects, admissions and custody
  * that has arrived. Everyone uses this and their wallet; nobody needs an API. It also feeds the WEB2/DSM overlay.
  */
 class DsmWalletController {
@@ -104,7 +104,7 @@ class DsmWalletController {
         }
     }
 
-    /** The custody tokens this organization knows: its own, with the units its account can dispatch, and its partners'. */
+    /** The custody objects this organization knows: its own, with the units its account can dispatch, and its partners'. */
     private Map custodyTokens(DsmWarehouseAccount home) {
         if (!home) {
             return [own: null, partners: [], connections: []]
@@ -135,7 +135,7 @@ class DsmWalletController {
         attempt { [seq: dsmCarriageService.requestUnits((params.quantity ?: "0") as long)] }
     }
 
-    /** Hand a sent shipment to a carrier: the account pays its custody units to the carrier's wallet. */
+    /** Hand a sent shipment to a carrier: the account sends its custody units to the carrier's wallet. */
     def dispatch() {
         attempt {
             DsmCarriage carriage = dsmCarriageService.dispatch(params.memo, DsmWallet.get(params.walletId))

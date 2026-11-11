@@ -5,9 +5,9 @@ import org.pih.warehouse.product.Product
 
 /**
  * A warehouse organization's request to admit physical units into DSM custody, and what became of it. The request
- * is a payment request over the Connect session with the registry, outside any grant, so nothing moves until the
- * registry's own operators approve it on the registry's own account. Once this account's status holds the payment
- * as a fact and its own history shows the credit, the units are in this warehouse's custody and stock can be
+ * is a payment request over the connection with the registry, outside any grant, so nothing moves until the
+ * registry's own operators approve it on the registry's own account. Once this account's result for the request holds
+ * the payment as a fact and its own history shows the credit, the units are in this warehouse's custody and stock can be
  * recorded against them: each recording draws on `quantityDrawn`, so custody can never be recorded twice.
  */
 class DsmAdmission {
@@ -35,7 +35,7 @@ class DsmAdmission {
     /** The memo the request carried, sealed to the two accounts. */
     String memo
 
-    /** The session and request sequence the request went out on; null until it did. */
+    /** The connection and request sequence the request went out on; null until it did. */
     String sessionId
     Long seq
 

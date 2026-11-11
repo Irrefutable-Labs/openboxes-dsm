@@ -2051,7 +2051,7 @@ class InventoryService implements ApplicationContextAware {
             transaction.disableRefresh = command.disableRefresh
 
             // DSM decides whether the units move: between two warehouses that are both on DSM the units are
-            // transferred account to account, and the destination's account must hold them, before either side's
+            // sent account to account, and the destination's account must hold them, before either side's
             // transaction is written (docs/plans/2026-11-01-dsm-custody-integration.md).
             if (!transaction.hasErrors()) {
                 dsmCustodyService.transferBetweenWarehouses(

@@ -10,10 +10,10 @@ import org.pih.warehouse.core.Location
  *
  * Two kinds, told apart by `location`, and never on one instance together, so release authority never shares a
  * server with custody:
- * - a warehouse's account (`location` set): its balance of a product's token is the units in that warehouse's
+ * - a warehouse's account (`location` set): what it owns of a product's object is the units in that warehouse's
  *   custody;
- * - a registry account (`location` null, `label` set): it commits product tokens and holds the fixed supply no
- *   warehouse has custody of yet. Its balance is capacity to admit, not physical stock.
+ * - a registry account (`location` null, `label` set): it issues products' objects and holds the fixed supply no
+ *   warehouse has custody of yet. What it owns is capacity to admit, not physical stock.
  */
 class DsmWarehouseAccount {
 

@@ -25,17 +25,17 @@ import org.pih.warehouse.dsm.DsmHostClient.Route
 import org.pih.warehouse.product.Product
 
 /**
- * What an organization's administrator sets up on its own instance: its own DSM accounts, the tokens it issues
- * (a registry) or adopts (a warehouse organization), and its own side of each Connect session. Every call here acts
+ * What an organization's administrator sets up on its own instance: its own DSM accounts, the objects it issues
+ * (a registry) or adopts (a warehouse organization), and its own side of each connection. Every call here acts
  * on one account of this instance. No call reaches another organization's host: what crosses between organizations
- * is an offer code, handed over out of band, and DSM's own Connect session.
+ * is an offer code, handed over out of band, and DSM's own connection.
  */
 @Transactional
 class DsmAccountService {
 
     /**
      * The supply a registry issues unless told otherwise: large enough that no product runs out of capacity to admit,
-     * and well inside what a DSM balance (a u64) carries. It is a ceiling on what can ever be admitted, not stock.
+     * and well inside what an account can own on DSM (a u64). It is a ceiling on what can ever be admitted, not stock.
      */
     static final long DEFAULT_SUPPLY = 1_000_000_000_000_000L
 
@@ -67,7 +67,7 @@ class DsmAccountService {
 
     /**
      * Give a warehouse its DSM account: the dsm-app-host running from `dataDir` on this machine, reached at
-     * `ingressOrigin`. The account's device id is read from the host's own record. It roots every token this
+     * `ingressOrigin`. The account's device id is read from the host's own record. It roots every object this
      * instance has adopted, so it can take in what it is sent.
      */
     DsmWarehouseAccount registerAccount(Location location, String ingressOrigin, String dataDir) {
@@ -89,7 +89,7 @@ class DsmAccountService {
     }
 
     /**
-     * The registry's account: it commits product tokens and holds the supply no warehouse has custody of yet. An
+     * The registry's account: it commits each product's object and holds the supply no warehouse has custody of yet. An
      * instance has one, and holds no warehouse account beside it, so release authority never shares a server with
      * custody.
      */
@@ -107,7 +107,7 @@ class DsmAccountService {
 
     /**
      * ERA from the network faucet, for the fees this account's own transitions cost: a new host holds none, and cannot
-     * issue a token until it does. A claim whose admission is still held is finished by the next claim.
+     * issue an object until it does. A claim whose admission is still held is finished by the next claim.
      */
     DsmWarehouseAccount claimNetworkFees(DsmWarehouseAccount account) {
         FaucetClaimRequest request = FaucetClaimRequest.newBuilder()
@@ -172,13 +172,13 @@ class DsmAccountService {
         return account
     }
 
-    // ------------------------------------------------------------------ tokens
+    // ------------------------------------------------------------------ objects
 
-    /** The ticker a product's token is named by: its product code, as a DSM ticker (2 to 8 of A-Z, 0-9). */
+    /** The ticker a product's object is named by: its product code, as a DSM ticker (2 to 8 of A-Z, 0-9). */
     static String tickerFor(Product product) {
         String code = product.productCode?.trim()?.toUpperCase()
         if (!code) {
-            throw new DsmCustodyException("product ${product.name} has no product code to name its DSM token by")
+            throw new DsmCustodyException("product ${product.name} has no product code to name its DSM object by")
         }
         if (!(code ==~ /[A-Z0-9]{2,8}/)) {
             throw new DsmCustodyException(
@@ -188,8 +188,8 @@ class DsmAccountService {
     }
 
     /**
-     * The token that stands for `product`'s units, committed by this instance's registry: 0 decimals, the whole
-     * `supply` released to the registry, transferable and burnable. Only a registry issues: a warehouse's balance
+     * The object that stands for `product`'s units, committed by this instance's registry: 0 decimals, the whole
+     * `supply` released to the registry, transferable and burnable. Only a registry issues: what a warehouse owns
      * is its custody, so a warehouse never holds units that stand for nothing. The product's code (the ticker) is
      * all of the product that goes into the policy.
      */
@@ -197,7 +197,7 @@ class DsmAccountService {
         DsmWarehouseAccount registry = registryAccount()
         if (!registry) {
             throw new DsmCustodyException(
-                    "this instance holds no registry account: a warehouse organization adopts a token from its " +
+                    "this instance holds no registry account: a warehouse organization adopts an object from its " +
                             "anchor, and only a registry issues one")
         }
         DsmProductToken already = DsmProductToken.findByProduct(product)
@@ -207,7 +207,7 @@ class DsmAccountService {
                             "(anchor ${already.policyAnchor})")
         }
         if (supply < 1) {
-            throw new DsmCustodyException("a token's supply is at least one unit, not ${supply}")
+            throw new DsmCustodyException("an object's supply is at least one unit, not ${supply}")
         }
         String ticker = tickerFor(product)
         TokenCreateRequest request = TokenCreateRequest.newBuilder()
@@ -242,13 +242,13 @@ class DsmAccountService {
     }
 
     /**
-     * Map a token to a product of this organization's own catalog and root it on each of its own accounts: the host
-     * fetches the published policy itself and re-hashes it to the anchor, so nothing about the token is taken from
-     * whoever handed the anchor over. A warehouse takes the token on before it can ever be sent it.
+     * Map an object to a product of this organization's own catalog and root it on each of its own accounts: the host
+     * fetches the published policy itself and re-hashes it to the anchor, so nothing about the object is taken from
+     * whoever handed the anchor over. A warehouse takes the object on before it can ever be sent it.
      */
     DsmProductToken adoptToken(Product product, String policyAnchor) {
         if (registryAccount()) {
-            throw new DsmCustodyException("this instance is the registry: it issues tokens, it does not adopt them")
+            throw new DsmCustodyException("this instance is the registry: it issues objects, it does not adopt them")
         }
         Base32Crockford.decodeId32(policyAnchor, "the policy anchor")
         DsmProductToken mapped = DsmProductToken.findByProduct(product) ?: DsmProductToken.findByPolicyAnchor(policyAnchor)
@@ -258,7 +258,7 @@ class DsmAccountService {
         }
         List<DsmWarehouseAccount> accounts = DsmWarehouseAccount.list()
         if (!accounts) {
-            throw new DsmCustodyException("this instance holds no DSM account to adopt a token on")
+            throw new DsmCustodyException("this instance holds no DSM account to adopt an object on")
         }
         DsmProductToken token = null
         accounts.each { DsmWarehouseAccount account ->
@@ -293,12 +293,12 @@ class DsmAccountService {
         DsmProductToken token = DsmProductToken.findByProduct(product)
         if (!token) {
             throw new DsmCustodyException(
-                    "product ${product.productCode} (${product.name}) has no DSM token: its units are not on DSM")
+                    "product ${product.productCode} (${product.name}) has no DSM object: its units are not on DSM")
         }
         return token
     }
 
-    /** What `account` holds spendable of `token`, by the anchor its own balance list names; 0 for no row. */
+    /** What `account` holds spendable of `token`, by the anchor its own `balance.list` names; 0 for no row. */
     long balanceOf(DsmWarehouseAccount account, DsmProductToken token) {
         Envelope envelope = clientFor(account).query("balance.list", new byte[0])
         BalancesListResponse list = DsmHostClient
@@ -308,11 +308,11 @@ class DsmAccountService {
         return row == null ? 0L : row.available
     }
 
-    // ------------------------------------------------------------------ this side of a Connect session
+    // ------------------------------------------------------------------ this side of a connection
 
     /**
      * This account makes a signed offer and returns its code, for whoever runs the other side. The offer asks for
-     * nothing that spends: a warehouse's offer to another warehouse asks to prove holdings of the tokens this
+     * nothing that spends: a warehouse's offer to another warehouse asks to prove what it owns of the objects this
      * instance knows; an offer to a registry asks for nothing at all, so everything it later asks of the registry
      * waits for the registry's operators.
      */
@@ -361,7 +361,7 @@ class DsmAccountService {
         if (refused || (account.registry && asked)) {
             throw new DsmCustodyException(
                     "the offer from ${preview.displayName} asks for ${asked}: ${account} grants " +
-                            "${account.registry ? "nothing, so every release waits for its operators" : "holdings proofs and nothing that spends"}")
+                            "${account.registry ? "nothing, so every release waits for its operators" : "owns proofs and nothing that spends"}")
         }
         String peerDeviceId = Base32Crockford.encode(preview.appDeviceId.toByteArray())
         if (peerDeviceId == account.deviceId) {
@@ -376,8 +376,8 @@ class DsmAccountService {
     }
 
     /**
-     * The offering side records the session its own account now holds for the offer: the peer's device id is read
-     * from that session. Waits up to the step bound for the accept to reach this account's relay.
+     * The offering side records the connection its own account now holds for the offer: the peer's device id is read
+     * from that connection. Waits up to the step bound for the accept to reach this account's relay.
      *
      * @param peerLocation this instance's Location for the peer's warehouse; null when the peer is the registry
      */
@@ -387,7 +387,7 @@ class DsmAccountService {
             throw new DsmCustodyException("name the Location that stands for the peer, or that the peer is the registry")
         }
         byte[] digest = Base32Crockford.decodeId32(offerDigest, "the offer digest")
-        ConnectSessionV1 held = DsmSteps.until("${account} holds a session for offer ${offerDigest}") {
+        ConnectSessionV1 held = DsmSteps.until("${account} holds a connection for offer ${offerDigest}") {
             sessionsHeldBy(account).find { ConnectSessionV1 session ->
                 session.offerDigest.toByteArray() == digest &&
                         session.status == ConnectSessionStatus.CONNECT_SESSION_STATUS_CONNECTED
@@ -398,7 +398,7 @@ class DsmAccountService {
                 Base32Crockford.encode(held.sessionId.toByteArray()), offerDigest)
     }
 
-    /** The row for this account and peer, written or moved to the newer session (a re-offer naming new tokens). */
+    /** The row for this account and peer, written or moved to the newer connection (a re-offer naming new objects). */
     private DsmConnection recordConnection(DsmWarehouseAccount account, String peerDeviceId, Location peerLocation,
                                            boolean peerRegistry, String peerName, String side, String sessionId,
                                            String offerDigest) {

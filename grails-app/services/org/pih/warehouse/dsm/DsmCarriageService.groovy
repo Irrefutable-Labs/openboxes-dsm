@@ -16,12 +16,12 @@ import org.pih.warehouse.dsm.DsmHostClient.Route
 /**
  * Custody in a person's hands, between two organizations (docs/plans/2026-11-03-dsm-authority-architecture.md, the
  * offline section). The product units move account to account when a shipment is sent, as before; who physically holds
- * the goods on the way is a second token, the sender's custody token, whose units the sending account pays to the
- * carrier's wallet and the carrier's wallet pays on to the receiving account at the door. Both legs carry the
+ * the goods on the way is a second object, the sender's custody object, whose units the sending account sends to the
+ * carrier's wallet and the carrier's wallet sends on to the receiving account at the door. Both legs carry the
  * shipment's memo. The receiving organization takes the shipment in only once its own account holds the hand-over.
  *
- * A wallet is credited a token only once it has adopted it (DSM: adoption precedes receipt), so a carrier adds the
- * custody token to their wallet first; a payment made before that lands when they do.
+ * A wallet is credited an object only once it has adopted it (DSM: adoption precedes receipt), so a carrier adds the
+ * custody object to their wallet first; a payment made before that lands when they do.
  */
 @Transactional
 class DsmCarriageService {
@@ -31,31 +31,31 @@ class DsmCarriageService {
     DsmAccountService dsmAccountService
     DsmWalletService dsmWalletService
 
-    // ------------------------------------------------------------------ the tokens
+    // ------------------------------------------------------------------ the objects
 
-    /** This organization's own custody token, or null before one is added. */
+    /** This organization's own custody object, or null before one is added. */
     DsmCustodyToken ownToken() {
         return DsmCustodyToken.findByCreatorIsNotNull()
     }
 
     /**
-     * This organization's custody token, from the anchor of a token its creator made in their own wallet. The account
+     * This organization's custody object, from the anchor of an object its creator issued in their own wallet. The account
      * roots it by fetching the policy itself and re-hashing it to the anchor; nothing is taken from the text pasted.
      */
     DsmCustodyToken addOwnToken(String policyAnchor, DsmWallet creator) {
         if (!creator) {
-            throw new DsmCustodyException("a custody token is made in a wallet connected here: name that wallet")
+            throw new DsmCustodyException("a custody object is issued in a wallet connected here: name that wallet")
         }
         if (ownToken()) {
-            throw new DsmCustodyException("this organization already has a custody token, ${ownToken().ticker}")
+            throw new DsmCustodyException("this organization already has a custody object, ${ownToken().ticker}")
         }
         return root(policyAnchor, creator, null)
     }
 
-    /** A partner's custody token: their carriers hand custody over to this organization's account under it. */
+    /** A partner's custody object: their carriers hand custody over to this organization's account under it. */
     DsmCustodyToken addPartnerToken(String policyAnchor, DsmConnection peer) {
         if (!peer?.peerLocation) {
-            throw new DsmCustodyException("a partner's custody token belongs to a connection to a partner's warehouse")
+            throw new DsmCustodyException("a partner's custody object belongs to a connection to a partner's warehouse")
         }
         if (DsmCustodyToken.findByPeer(peer)) {
             throw new DsmCustodyException("${peer} already hands custody over under ${DsmCustodyToken.findByPeer(peer).ticker}")
@@ -64,9 +64,9 @@ class DsmCarriageService {
     }
 
     private DsmCustodyToken root(String policyAnchor, DsmWallet creator, DsmConnection peer) {
-        Base32Crockford.decodeId32(policyAnchor, "the token's anchor")
+        Base32Crockford.decodeId32(policyAnchor, "the object's anchor")
         if (DsmCustodyToken.findByPolicyAnchor(policyAnchor)) {
-            throw new DsmCustodyException("${policyAnchor} is already a custody token here")
+            throw new DsmCustodyException("${policyAnchor} is already a custody object here")
         }
         if (DsmProductToken.findByPolicyAnchor(policyAnchor) || DsmAccessLevel.findByPolicyAnchor(policyAnchor)) {
             throw new DsmCustodyException("${policyAnchor} stands for a product or a level of access, not for custody")
@@ -78,13 +78,13 @@ class DsmCarriageService {
     }
 
     /**
-     * Ask the own token's creator to release `quantity` custody units to the organization's account: a payment request
+     * Ask the own object's creator to release `quantity` custody units to the organization's account: a payment request
      * no grant covers, held on the creator's phone (Apps, Waiting) until they approve it there.
      */
     long requestUnits(long quantity) {
         DsmCustodyToken token = ownToken()
         if (!token) {
-            throw new DsmCustodyException("this organization has no custody token yet")
+            throw new DsmCustodyException("this organization has no custody object yet")
         }
         if (quantity < 1) {
             throw new DsmCustodyException("release at least one custody unit")
@@ -92,7 +92,7 @@ class DsmCarriageService {
         return askToPay(token.creator, token, quantity, MEMO_UNITS)
     }
 
-    /** What the account holds of its own custody token: units it can dispatch with. */
+    /** What the account holds of its own custody object: units it can dispatch with. */
     long spareUnits() {
         DsmCustodyToken token = ownToken()
         return token ? balance(dsmWalletService.homeAccount(), token) : 0L
@@ -102,10 +102,10 @@ class DsmCarriageService {
         return dsmAccountService.balanceOf(account, new DsmProductToken(policyAnchor: token.policyAnchor, ticker: token.ticker))
     }
 
-    // ------------------------------------------------------------------ dispatch: the account pays a carrier
+    // ------------------------------------------------------------------ dispatch: the account sends to a carrier
 
     /**
-     * Hand a sent shipment to a carrier: the account pays the shipment's units of its own custody token to the
+     * Hand a sent shipment to a carrier: the account sends the shipment's units of its own custody object to the
      * carrier's wallet, under the shipment's memo. Once per shipment; a second call with the same carrier returns the
      * record, with another is refused. The account's own history decides whether the payment was already made.
      */
@@ -115,7 +115,7 @@ class DsmCarriageService {
         }
         DsmCustodyToken token = ownToken()
         if (!token) {
-            throw new DsmCustodyException("this organization has no custody token: add one before handing goods to a carrier")
+            throw new DsmCustodyException("this organization has no custody object: add one before handing goods to a carrier")
         }
         List<DsmCustodyTransfer> sent = DsmCustodyTransfer.findAllByKindAndMemo(DsmCustodyTransfer.KIND_SHIPMENT, memo)
         if (!sent) {
@@ -175,17 +175,17 @@ class DsmCarriageService {
         return (transfers.sum { DsmCustodyTransfer t -> t.quantity } ?: 0) as int
     }
 
-    // ------------------------------------------------------------------ hand-over: a carrier pays the account
+    // ------------------------------------------------------------------ hand-over: a carrier sends to the account
 
     /**
      * Ask a carrier's wallet to hand a partner's shipment over: a payment request for the shipment's units of the
-     * partner's custody token, under the shipment's memo, held on the carrier's phone until they approve it. The
+     * partner's custody object, under the shipment's memo, held on the carrier's phone until they approve it. The
      * carrier's wallet has to be connected to this organization's account.
      */
     long askHandover(DsmConnection peer, String memo, int units, DsmWallet carrier) {
         DsmCustodyToken token = DsmCustodyToken.findByPeer(peer)
         if (!token) {
-            throw new DsmCustodyException("${peer} hands no custody over here: add their custody token first")
+            throw new DsmCustodyException("${peer} hands no custody over here: add their custody object first")
         }
         if (!carrier) {
             throw new DsmCustodyException("name the carrier's wallet: it has to be connected here to be asked")
@@ -198,16 +198,16 @@ class DsmCarriageService {
 
     /**
      * A payment a wallet made on a Connect request carries the request's reference before the memo asked for:
-     * `dsm-connect:<session>:<seq> <memo>` (DSM `payment_memo`). The session is the one the request was made on.
+     * `dsm-connect:<session>:<seq> <memo>` (DSM `payment_memo`). `<session>` is the connection the request was made on.
      */
     static final java.util.regex.Pattern CONNECT_PAYMENT_MEMO = ~/^dsm-connect:([0-9A-Z]{52}):(\d+) (.*)$/
 
     /**
      * How a partner's shipment stands at this account's door, from the account's own history: the custody units
-     * wallets have paid it under the memo, of the partner's custody token, either sent plainly or paid on a request
-     * this account made over a connected wallet's session. Null when the partner hands no custody over.
+     * wallets have sent it under the memo, of the partner's custody object, either sent plainly or sent on a request
+     * this account made over a wallet's connection. Null when the partner hands no custody over.
      *
-     * @return `required`, `units` handed over so far, `by` the device that paid them, `transferId` of the latest credit
+     * @return `required`, `units` handed over so far, `by` the device that sent them, `transferId` of the latest credit
      */
     static Map handoverOf(DsmConnection peer, String memo, List<TransactionInfo> rows, Collection<String> ownDevices) {
         DsmCustodyToken token = DsmCustodyToken.findByPeer(peer)
@@ -268,7 +268,7 @@ class DsmCarriageService {
 
     private long askToPay(DsmWallet wallet, DsmCustodyToken token, long amount, String memo) {
         ConnectAppRequestIntentV1 intent = ConnectAppRequestIntentV1.newBuilder()
-                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the session id")))
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(wallet.sessionId, "the connection id")))
                 .setPay(ConnectPayV1.newBuilder()
                         .setPolicyCommit(ByteString.copyFrom(Base32Crockford.decodeId32(token.policyAnchor, "the anchor")))
                         .setAmount(amount)

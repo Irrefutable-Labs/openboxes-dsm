@@ -37,9 +37,9 @@ import org.springframework.web.context.request.RequestContextHolder
  * Who may do what, once an organization has an owner: DSM says, and nothing in this application's database does.
  *
  * Every answer starts from three things a database edit cannot reach: the host named in this server's launch settings, the
- * sessions that host holds, and what is on the storage nodes. The owner is the first owner's claim this account published.
+ * connections that host holds, and what is on the storage nodes. The owner is the first owner's claim this account published.
  * A person holds a seat only if a vault this account locked stands now, with a commitment recomputed here over the organization,
- * the token, the role, the seat, the person and their proven wallet. A row can name a candidate. It cannot make one pass.
+ * the object, the role, the seat, the person and their proven wallet. A row can name a candidate. It cannot make one pass.
  *
  * Someone who controls the host itself holds the account's keys, and is outside what this can stop.
  */
@@ -151,9 +151,9 @@ class DsmAuthorityService {
         return read.objectsList
     }
 
-    /** A connected session as the host holds it: this is what names a wallet. */
+    /** A connection as the host holds it, while connected: this is what names a wallet. */
     ConnectSessionV1 sessionOf(String sessionId) {
-        byte[] id = Base32Crockford.decodeId32(sessionId, "the session id")
+        byte[] id = Base32Crockford.decodeId32(sessionId, "the connection id")
         return DsmSteps.reply(hostClient().connect("connect.app.sessions", Empty.getDefaultInstance(), Route.QUERY),
                 ConnectReplyV1.ReplyCase.SESSIONS, "connect.app.sessions").sessions.sessionsList.find { ConnectSessionV1 session ->
             session.sessionId.toByteArray() == id && session.status == ConnectSessionStatus.CONNECT_SESSION_STATUS_CONNECTED

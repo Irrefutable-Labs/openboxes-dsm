@@ -57,7 +57,7 @@ class DsmCustodyTransfer {
     /** The accepting account's name for the transfer (its history row's id). */
     String destinationTransferId
 
-    /** The peer's balance of the token as its holdings proof established it, and the position proven. */
+    /** What the peer owns of the object as its owns proof established it, and the position proven. */
     Long provenAmount
     Long provenPosition
 

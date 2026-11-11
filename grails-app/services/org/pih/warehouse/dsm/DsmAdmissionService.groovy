@@ -24,13 +24,13 @@ import org.pih.warehouse.dsm.DsmHostClient.Route
 import org.pih.warehouse.product.Product
 
 /**
- * How physical units enter DSM custody, from both sides of the session between a warehouse organization and the
+ * How physical units enter DSM custody, from both sides of the connection between a warehouse organization and the
  * registry (docs/plans/2026-11-01-dsm-custody-integration.md):
- * - the organization asks: a payment request over the session, outside any grant, naming the document that says the
+ * - the organization asks: a payment request over the connection, outside any grant, naming the document that says the
  *   units exist;
  * - the registry's operators decide on the registry's own instance: DSM holds the request until its account is told,
  *   and that account is told only after the configured number of different operators approved;
- * - the organization establishes the outcome from its own account's status and history, and only then records stock
+ * - the organization establishes the outcome from its own account's result and history, and only then records stock
  *   against the units.
  *
  * There is no other way units leave the registry: no route here sends from a registry account, the registry grants
@@ -89,7 +89,7 @@ class DsmAdmissionService {
         }
         admission.sessionId = connection.sessionId
         ConnectAppRequestIntentV1 intent = ConnectAppRequestIntentV1.newBuilder()
-                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(connection.sessionId, "the session id")))
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(connection.sessionId, "the connection id")))
                 .setPay(ConnectPayV1.newBuilder()
                         .setPolicyCommit(ByteString.copyFrom(Base32Crockford.decodeId32(token.policyAnchor, "the anchor")))
                         .setAmount(quantity)
@@ -104,7 +104,7 @@ class DsmAdmissionService {
     }
 
     /**
-     * What this account's own status says became of the request. The registry's answer alone moves nothing here:
+     * What this account's own result says became of the request. The registry's answer alone moves nothing here:
      * only DSM's fact that the payment was accepted, with this account's own history showing the credit, establishes
      * the units.
      */
@@ -120,7 +120,7 @@ class DsmAdmissionService {
         }
         DsmHostClient client = dsmAccountService.clientFor(admission.account)
         ConnectRequestRefV1 ref = ConnectRequestRefV1.newBuilder()
-                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(admission.sessionId, "the session id")))
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(admission.sessionId, "the connection id")))
                 .setSeq(admission.seq)
                 .build()
         Envelope envelope = client.invokeQuietly("connect.app.status", ref)
@@ -147,7 +147,7 @@ class DsmAdmissionService {
 
     /**
      * This account's own history row of the credit: from the registry, of exactly the units, carrying exactly the memo
-     * DSM builds for this session and request (`payment_memo`), which the signed transfer's terms commit to. Nothing
+     * DSM builds for this connection and request (`payment_memo`), which the signed transfer's terms commit to. Nothing
      * else counts, so an organization's choice of reference cannot make one request's credit stand for another's.
      */
     private TransactionInfo creditOf(DsmHostClient client, DsmAdmission admission) {
@@ -220,7 +220,7 @@ class DsmAdmissionService {
         DsmConnection connection = DsmConnection.findByAccountAndPeerRegistry(account, true)
         if (!connection) {
             throw new DsmCustodyException(
-                    "${account} has no connection to a registry: offer it one, and confirm the session once it approves")
+                    "${account} has no connection to a registry: offer it one, and confirm the connection once it approves")
         }
         return connection
     }
@@ -293,7 +293,7 @@ class DsmAdmissionService {
                 approvalsRequired: required, decided: true, line: decided.line]
     }
 
-    /** One operator's refusal is enough: nothing is released, and the organization's status says so. */
+    /** One operator's refusal is enough: nothing is released, and the organization's result says so. */
     Map declineRelease(String sessionId, long seq, User operator) {
         DsmWarehouseAccount registry = requireRegistry()
         ConnectPendingV1 request = requirePending(registry, sessionId, seq)
@@ -321,7 +321,7 @@ class DsmAdmissionService {
     }
 
     private ConnectPendingV1 requirePending(DsmWarehouseAccount registry, String sessionId, long seq) {
-        byte[] session = Base32Crockford.decodeId32(sessionId, "the session id")
+        byte[] session = Base32Crockford.decodeId32(sessionId, "the connection id")
         List<ConnectPendingV1> pending = DsmSteps.reply(
                 dsmAccountService.clientFor(registry).connect("connect.pending", Empty.getDefaultInstance(), Route.QUERY),
                 ConnectReplyV1.ReplyCase.PENDING, "connect.pending").pending.pendingList
@@ -329,23 +329,23 @@ class DsmAdmissionService {
             p.seq == seq && p.sessionId.toByteArray() == session
         }
         if (!request) {
-            throw new DsmCustodyException("request ${seq} on session ${sessionId} is not waiting on this registry")
+            throw new DsmCustodyException("request ${seq} on connection ${sessionId} is not waiting on this registry")
         }
         return request
     }
 
-    /** A request is decided only on a session this registry's own operators accepted and recorded. */
+    /** A request is decided only on a connection this registry's own operators accepted and recorded. */
     private DsmConnection requireKnownRequester(String sessionId) {
         DsmConnection requester = DsmConnection.findBySessionId(sessionId)
         if (!requester) {
-            throw new DsmCustodyException("session ${sessionId} is not one this registry's operators accepted")
+            throw new DsmCustodyException("connection ${sessionId} is not one this registry's operators accepted")
         }
         return requester
     }
 
     private ConnectDecidedV1 respond(DsmWarehouseAccount registry, String sessionId, long seq, ConnectDecision decision) {
         ConnectRespondRequestV1 respond = ConnectRespondRequestV1.newBuilder()
-                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(sessionId, "the session id")))
+                .setSessionId(ByteString.copyFrom(Base32Crockford.decodeId32(sessionId, "the connection id")))
                 .setSeq(seq)
                 .setDecision(decision)
                 .build()

@@ -42,7 +42,7 @@ class UrlMappings {
 
         // REST APIs with complex resource names or subresources
 
-        // DSM custody: each organization's own accounts, tokens and sessions, its admissions or release decisions,
+        // DSM custody: each organization's own accounts, objects and connections, its admissions or release decisions,
         // the custody peers sent it, and what its accounts established
         "/api/dsm/accounts"(parseRequest: true) {
             controller = { "dsmCustodyApi" }

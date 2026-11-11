@@ -44,13 +44,13 @@
 
     <div class="card">
         <h2>Levels of access</h2>
-        <div class="hint">Make the token in the creator's wallet (Accounts, Create token). Its supply is the most seats there can ever be. Then paste its anchor here.</div>
+        <div class="hint">Issue the seat object in the creator's wallet (Tokens, Create token). Its supply is the most seats there can ever be. Then paste its anchor here.</div>
         <input id="level-name" placeholder="Name, such as Warehouse manager"/>
         <select id="level-role">
             <option value="ROLE_ADMIN">Admin</option><option value="ROLE_MANAGER">Manager</option>
             <option value="ROLE_ASSISTANT">Assistant</option><option value="ROLE_BROWSER">Browser</option>
         </select>
-        <input id="level-anchor" placeholder="The token's anchor" size="44"/>
+        <input id="level-anchor" placeholder="The object's anchor" size="44"/>
         <select id="level-creator"></select>
         <button id="add-level">Add level</button>
         <table id="levels"></table>
@@ -84,25 +84,25 @@
 
     <div class="card">
         <h2>Products on DSM</h2>
-        <div class="hint">The registry creates each product's token in its wallet. Paste its anchor here against your own product.</div>
+        <div class="hint">The registry issues each product's object in its wallet. Paste its anchor here against your own product.</div>
         <select id="token-product"></select>
-        <input id="token-anchor" placeholder="The token's anchor" size="44"/>
-        <button id="adopt">Adopt token</button>
+        <input id="token-anchor" placeholder="The object's anchor" size="44"/>
+        <button id="adopt">Adopt object</button>
         <table id="tokens"></table>
     </div>
 
     <div class="card" id="custody-card">
         <h2>Custody on the way</h2>
-        <div class="hint">One custody unit is one unit of goods in someone's hands. The organization's account pays them to the carrier who takes a shipment, and the carrier's wallet pays them to the receiving organization at the door. Ownership never moves with them.</div>
+        <div class="hint">One custody unit is one unit of goods in someone's hands. The organization's account sends them to the carrier who takes a shipment, and the carrier's wallet sends them to the receiving organization at the door. Ownership never moves with them.</div>
         <div id="custody-own"></div>
         <div class="row" id="custody-add-own">
-            <input id="custody-anchor" placeholder="The custody token's anchor, made in a wallet here" size="44"/>
+            <input id="custody-anchor" placeholder="The custody object's anchor, issued in a wallet here" size="44"/>
             <select id="custody-creator"></select>
-            <button id="custody-add">Use as our custody token</button>
+            <button id="custody-add">Use as our custody object</button>
         </div>
         <div class="row">
             <select id="custody-connection"></select>
-            <input id="custody-partner-anchor" placeholder="A partner's custody token anchor" size="44"/>
+            <input id="custody-partner-anchor" placeholder="A partner's custody object anchor" size="44"/>
             <button class="plain" id="custody-add-partner">Their carriers hand over here</button>
         </div>
         <table id="custody-partners"></table>
@@ -128,7 +128,7 @@
 
     <div class="card">
         <h2>DSM and the books</h2>
-        <div class="hint">Books on hand should equal DSM's holding, less admitted units not yet recorded and units here not yet received. The books are added up from the stock transactions, every minute.</div>
+        <div class="hint">Books on hand should equal what the account owns on DSM, less admitted units not yet recorded and units here not yet received. The books are added up from the stock transactions, every minute.</div>
         <button class="plain" id="check-now">Check now</button>
         <table id="reconcile"></table>
         <h2 style="margin-top:14px">Findings, newest first. Nothing here is ever changed.</h2>
@@ -137,13 +137,13 @@
 
     <div class="card">
         <h2>Authority record</h2>
-        <div class="hint">Who owns this organization and every change to who may act, read from the storage nodes, each object signed by this organization's account. Nothing in this application's database can add to it.</div>
+        <div class="hint">Who owns this organization and every change to who may act, read from the storage nodes, each entry signed by this organization's account. Nothing in this application's database can add to it.</div>
         <table id="authority"></table>
     </div>
 
     <div class="card">
         <h2>Custody on record</h2>
-        <div class="hint">Verify asks the partner's account to prove what it holds. No access to their systems is involved.</div>
+        <div class="hint">Verify asks the partner's account to prove what it owns. No access to their systems is involved.</div>
         <table id="transfers"></table>
     </div>
 </div>
@@ -173,18 +173,18 @@
         function showCustody(c) {
             var own = document.getElementById('custody-own');
             if (c.own) {
-                own.innerHTML = '<div><b>' + esc(c.own.ticker) + '</b>, made by ' + esc(c.own.creator) + '. The account can hand out <b>' + esc(c.own.spare) + '</b> units. <input size="5" id="custody-units" value="500"/> <button class="plain" id="custody-request">Ask ' + esc(c.own.creator) + ' for more</button></div>';
+                own.innerHTML = '<div><b>' + esc(c.own.ticker) + '</b>, issued by ' + esc(c.own.creator) + '. The account can hand out <b>' + esc(c.own.spare) + '</b> units. <input size="5" id="custody-units" value="500"/> <button class="plain" id="custody-request">Ask ' + esc(c.own.creator) + ' for more</button></div>';
                 document.getElementById('custody-add-own').style.display = 'none';
                 document.getElementById('custody-request').onclick = function () {
                     call('requestCustodyUnits', { quantity: val('custody-units') }).then(function () { say('Asked. It waits on their phone under Apps, Waiting.'); }).catch(fail);
                 };
             } else {
-                own.innerHTML = '<div class="hint">No custody token yet. Make one in the owner\'s wallet (Tokens, Create token, 0 decimals, a large supply) and paste its anchor here.</div>';
+                own.innerHTML = '<div class="hint">No custody object yet. Issue one in the owner\'s wallet (Tokens, Create token, 0 decimals, a large supply) and paste its anchor here.</div>';
                 document.getElementById('custody-add-own').style.display = '';
             }
             options('custody-creator', wallets, function (r) { return r.label; });
             options('custody-connection', c.connections, function (r) { return r.name; });
-            document.getElementById('custody-partners').innerHTML = c.partners.length ? '<tr><th>Partner</th><th>Their custody token</th></tr>' + c.partners.map(function (p) { return '<tr><td>' + esc(p.peer) + '</td><td>' + esc(p.ticker) + ' <code>' + esc(p.anchor.slice(0, 10)) + '</code></td></tr>'; }).join('') : '';
+            document.getElementById('custody-partners').innerHTML = c.partners.length ? '<tr><th>Partner</th><th>Their custody object</th></tr>' + c.partners.map(function (p) { return '<tr><td>' + esc(p.peer) + '</td><td>' + esc(p.ticker) + ' <code>' + esc(p.anchor.slice(0, 10)) + '</code></td></tr>'; }).join('') : '';
         }
         function refresh() {
             return call('state').then(function (s) {
@@ -210,13 +210,13 @@
                 document.getElementById('wallets').innerHTML = '<tr><th>Wallet</th><th>Device</th><th>Seats</th><th></th></tr>' + s.wallets.map(function (w) {
                     return '<tr><td>' + esc(w.label) + '</td><td><code>' + esc(w.deviceId) + '</code></td><td>' + esc(w.seats) + '</td><td>' + (w.owner ? 'Owner' : '') + '</td></tr>';
                 }).join('');
-                options('level-creator', s.wallets, function (w) { return 'Created by ' + w.label; });
+                options('level-creator', s.wallets, function (w) { return 'Issued by ' + w.label; });
                 options('seat-wallet', s.wallets, function (w) { return 'For ' + w.label; });
                 options('seat-level', s.levels, function (l) { return l.name; });
-                document.getElementById('levels').innerHTML = '<tr><th>Level</th><th>Token</th><th>Cap</th><th>Assigned</th><th>Spare</th><th>Release seats</th></tr>' + s.levels.map(function (l) {
+                document.getElementById('levels').innerHTML = '<tr><th>Level</th><th>Object</th><th>Cap</th><th>Assigned</th><th>Spare</th><th>Release seats</th></tr>' + s.levels.map(function (l) {
                     return '<tr><td>' + esc(l.name) + '</td><td>' + esc(l.ticker) + '</td><td>' + esc(l.cap) + '</td><td>' + esc(l.assigned) + '</td><td>' + esc(l.spare) + '</td><td><input size="4" id="release-' + esc(l.id) + '" value="1"/><button class="plain" data-release="' + esc(l.id) + '">Ask ' + esc(l.creator) + '</button></td></tr>';
                 }).join('');
-                document.getElementById('seats').innerHTML = '<tr><th>Seat</th><th>Holder</th><th>Where</th><th>Assigned by</th><th>Status</th><th>Revoke</th></tr>' + s.seats.map(function (x) {
+                document.getElementById('seats').innerHTML = '<tr><th>Seat</th><th>Holder</th><th>Where</th><th>Assigned by</th><th>State</th><th>Revoke</th></tr>' + s.seats.map(function (x) {
                     return '<tr><td>' + esc(x.level) + ' #' + esc(x.number) + '</td><td>' + esc(x.holder) + '</td><td>' + esc(x.location) + '</td><td>' + esc(x.authority) + '</td><td>' + esc(x.status) + '</td><td>' + (x.status === 'ASSIGNED'
                         ? 'In your wallet: SoFi, Escrow, find <code>' + esc(x.cell) + '</code> and decide revoke. <button class="plain" data-refresh="' + esc(x.id) + '">Check</button>'
                         : '') + '</td></tr>';
@@ -279,12 +279,12 @@
                 options('admit-product', list, function (p) { return p.label; });
             }).catch(fail);
             apiCall('dsm/tokens').then(function (rows) {
-                document.getElementById('tokens').innerHTML = '<tr><th>Product</th><th>Token</th><th>Held here</th></tr>' + rows.map(function (t) {
+                document.getElementById('tokens').innerHTML = '<tr><th>Product</th><th>Object</th><th>Owned here</th></tr>' + rows.map(function (t) {
                     return '<tr><td>' + esc(t.productCode) + '</td><td>' + esc(t.ticker) + '</td><td>' + esc(t.holdings.map(function (h) { return h.available; }).join(', ')) + '</td></tr>';
                 }).join('');
             }).catch(fail);
             apiCall('dsm/admissions').then(function (rows) {
-                document.getElementById('admissions').innerHTML = '<tr><th>Document</th><th>Units</th><th>Recorded</th><th>Status</th></tr>' + rows.map(function (a) {
+                document.getElementById('admissions').innerHTML = '<tr><th>Document</th><th>Units</th><th>Recorded</th><th>Result</th></tr>' + rows.map(function (a) {
                     return '<tr><td>' + esc(a.reference) + '</td><td>' + esc(a.quantity) + '</td><td>' + esc(a.quantityDrawn) + '</td><td>' + esc(a.status) + '</td></tr>';
                 }).join('');
             }).catch(fail);
@@ -315,8 +315,8 @@
             if (!e.target.getAttribute) return;
             var prove = e.target.getAttribute('data-prove');
             if (prove) {
-                say('Asking the partner\'s account to prove what it holds.');
-                apiCall('dsm/transfers/' + prove + '/proof', {}).then(function (t) { say('Proven: they hold ' + t.provenAmount + ' units.'); business(); }).catch(fail);
+                say('Asking the partner\'s account to prove what it owns.');
+                apiCall('dsm/transfers/' + prove + '/proof', {}).then(function (t) { say('Proven: they own ' + t.provenAmount + ' units.'); business(); }).catch(fail);
             }
             var take = e.target.getAttribute('data-take');
             if (take) {
@@ -327,7 +327,7 @@
             }
             var dispatch = e.target.getAttribute('data-dispatch');
             if (dispatch) {
-                say('Handing the shipment to the carrier: the account pays them its custody units.');
+                say('Handing the shipment to the carrier: the account sends them its custody units.');
                 call('dispatch', { memo: dispatch, walletId: val('carrier-' + dispatch) }).then(function (c) {
                     say('Handed over: ' + c.units + ' ' + c.ticker + ' are in ' + c.wallet + '\'s wallet. They hold the goods now.'); business(); refresh();
                 }).catch(fail);
@@ -389,7 +389,7 @@
         setInterval(function () { refresh(); business(); }, 15000);
         document.getElementById('custody-add').onclick = function () {
             call('addCustodyToken', { policyAnchor: val('custody-anchor'), creatorId: val('custody-creator') })
-                .then(function (t) { say('Our custody token is ' + t.ticker + '.'); refresh(); }).catch(fail);
+                .then(function (t) { say('Our custody object is ' + t.ticker + '.'); refresh(); }).catch(fail);
         };
         document.getElementById('custody-add-partner').onclick = function () {
             call('addCustodyToken', { policyAnchor: val('custody-partner-anchor'), connectionId: val('custody-connection') })

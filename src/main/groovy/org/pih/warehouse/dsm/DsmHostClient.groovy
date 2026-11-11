@@ -27,7 +27,7 @@ import groovy.transform.CompileStatic
  * The host speaks the DSM SDK's protobuf ingress (the boundary a phone's wallet screen and the Wildstate game
  * server use): an IngressRequest in, an IngressResponse out, the answer a 0x03-framed Envelope. This client only
  * frames requests and reads answers; every DSM decision is the SDK's, inside the host. Nothing a call returns is
- * evidence by itself: what OpenBoxes acts on is read back from the account's own state (its balances, its
+ * evidence by itself: what OpenBoxes acts on is read back from the account's own state (what it owns, its
  * history, the facts its Connect routes established).
  *
  * The ingress listens on a loopback address alone and admits a call only with the secret the host's launch wrote

@@ -283,7 +283,7 @@
             }
             memo = b.getAttribute('data-dispatch');
             if (memo) {
-                b.disabled = true; toast('Paying the carrier\'s wallet.');
+                b.disabled = true; toast('Sending the custody units to the carrier\'s wallet.');
                 return act(call('dispatch', { memo: memo, walletId: picked(b) }), function (r) { return 'Handed to carrier ' + r.wallet + ': ' + r.units + ' ' + r.ticker + '.'; });
             }
             var id = b.getAttribute('data-count');

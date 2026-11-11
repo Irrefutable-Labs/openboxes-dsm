@@ -36,7 +36,7 @@ class DsmCarriageServiceSpec extends Specification {
                 .build()
     }
 
-    void 'a hand-over is the custody units a wallet paid the account under the shipment memo'() {
+    void 'a hand-over is the custody units a wallet sent the account under the shipment memo'() {
         when:
         Map handover = DsmCarriageService.handoverIn([credit(CARRIER)], "NGCUST", MEMO, [ACCOUNT, PARTNER])
 
@@ -47,7 +47,7 @@ class DsmCarriageServiceSpec extends Specification {
         handover.transferId == "row-${CARRIER.take(4)}-120".toString()
     }
 
-    void 'units from another organization account, another token, another memo, a debit or an offline row do not count'() {
+    void 'units from another organization account, another object, another memo, a debit or an offline row do not count'() {
         expect:
         DsmCarriageService.handoverIn(rows, "NGCUST", MEMO, [ACCOUNT, PARTNER]).units == 0L
 
@@ -62,7 +62,7 @@ class DsmCarriageServiceSpec extends Specification {
         ]
     }
 
-    void 'a payment made on a request this account sent over a connected wallet session carries the memo behind its reference'() {
+    void 'a payment made on a request this account sent over a wallet connection carries the memo behind its reference'() {
         given:
         String session = device(9)
         String paid = "dsm-connect:${session}:3 ${MEMO}".toString()

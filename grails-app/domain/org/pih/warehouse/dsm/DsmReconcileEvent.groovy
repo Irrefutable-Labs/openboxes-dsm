@@ -27,7 +27,7 @@ class DsmReconcileEvent {
     DsmWarehouseAccount account
     Product product
 
-    /** What was measured: DSM's holding, its admitted units not yet recorded, units here not yet received, the books. */
+    /** What was measured: what the account owns on DSM, its admitted units not yet recorded, units here not yet received, the books. */
     Long dsmHolding
     Long undrawn
     Long inTransit

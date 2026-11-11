@@ -80,7 +80,7 @@ class DsmTestHost extends DsmTestProcess {
     }
 
     /**
-     * Check this account's connected sessions and approve what waits, as a partner watching its wallet does, until `done`
+     * Check this account's connections and approve what waits, as a partner watching its wallet does, until `done`
      * says to stop. A request reaches a wallet only when it checks.
      */
     Thread answeringRequests(java.util.concurrent.atomic.AtomicBoolean done) {
@@ -96,7 +96,7 @@ class DsmTestHost extends DsmTestProcess {
                                 .setDecision(dsm.types.proto.ConnectDecision.CONNECT_DECISION_APPROVE).build(), DsmHostClient.Route.INVOKE)
                     }
                 } catch (DsmHostException | org.pih.warehouse.dsm.DsmCustodyException ignored) {
-                    // Nothing to answer yet, or the session is settling: the next round looks again.
+                    // Nothing to answer yet, or the connection is settling: the next round looks again.
                 }
                 Thread.sleep(3000L)
             }
@@ -104,8 +104,8 @@ class DsmTestHost extends DsmTestProcess {
     }
 
     /**
-     * ERA from the network faucet, for the fees a token's creation burns. A claim whose admission is still held is
-     * finished by the next claim, as a player claiming again finishes it.
+     * ERA from the network faucet, for the fees that issuing an object burns. A claim whose admission is still held
+     * is finished by the next claim, as a player claiming again finishes it.
      */
     void claimFaucet() {
         FaucetClaimRequest request = FaucetClaimRequest.newBuilder()
@@ -123,7 +123,7 @@ class DsmTestHost extends DsmTestProcess {
         }
     }
 
-    /** What the account's `balance.list` reports it can spend of `ticker`, in base units; null for a token it lists no row for. */
+    /** What the account's `balance.list` reports it owns of `ticker`, in the object's own units; null for an object it lists no row for. */
     Long balance(String ticker) {
         Envelope envelope = client.query("balance.list", new byte[0])
         BalancesListResponse list = DsmHostClient
@@ -133,7 +133,7 @@ class DsmTestHost extends DsmTestProcess {
         return row == null ? null : row.available
     }
 
-    /** The balance once it reaches `expected`, or a failure naming the last balance seen. */
+    /** What the account owns of `ticker` once it reaches `expected`, or a failure naming the last amount seen. */
     long awaitBalance(String ticker, long expected) {
         return until("${name} holds ${expected} ${ticker}") {
             Long held = balance(ticker)
