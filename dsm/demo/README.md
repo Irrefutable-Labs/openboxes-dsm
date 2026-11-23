@@ -21,8 +21,9 @@ NARRATION.md what is said over it.
   `DSM_BIN` naming where it is). The hosts and the wallets they connect to must be built from the same DSM code.
 - JDK 8 (`JAVA_HOME`), Docker, and this application built: `./gradlew war bootRepackage`.
 - `fleet/dsm_env_config.toml` is a copy of the DSM checkout's `dsm_client/frontend/public/dsm_env_config.toml`: the beta
-  fleet, each member with its own CA. The fleet was reprovisioned on 2026-11-11 (node schema 3), so accounts and objects
-  made on it before then are gone; refresh the copy whenever DSM repins the fleet.
+  fleet, each member with its own CA. The fleet was reprovisioned again on 2026-11-16 UTC (node schema 4, release 0.1.1-beta.4), so
+  accounts and objects made on it before then are gone. This copy and `DSM_REVISION` predate that: refresh both from DSM
+  main before a run, and whenever DSM repins the fleet.
 
 ## With phones
 
@@ -37,7 +38,7 @@ python3 dsm/demo/setup.py
 ## Without phones
 
 The four people's wallets are terminal wallets: each a `dsm-app-host` of its own on the same network, which is what
-DSM's `make dev-wallet` runs (it runs two; the story needs four, so `network.sh` runs four the same way), answered
+DSM's `make dev-wallet` and `make dev-wallet2` run (two wallets; the story needs four, so `network.sh` runs four the same way), answered
 through DSM's own Python client (`terminal_wallet.py`). Each person's browser is a desktop Chrome of their own
 (`browser.py`). Marcus's wallet issues the run's objects itself. Nothing touches adb.
 

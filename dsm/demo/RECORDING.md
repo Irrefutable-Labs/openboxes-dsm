@@ -1,13 +1,13 @@
 # Recording the demo
 
-About 9 minutes, 14 scenes, on the live storage fleet with four real wallets. Claude drives the browser and the phones while
-you record. The story bar, the live phone and the WEB2/DSM panel explain each step on screen. To walk the same story
+About 9 minutes, 14 scenes, on the live storage fleet with four real wallets. `play.py` does the phone and account work and checks
+each beat while you record; the browser steps are done in the browser. The story bar, the live phone and the WEB2/DSM panel explain each step on screen. To walk the same story
 without phones, end to end, see README.md, Without phones.
 
 1. Keep the four phones plugged in or awake, with Wireless debugging on: `RFGYB0PQ8XK` is Marcus, `RFGYB0PQ9FF` is Priya,
    `R5CW620MQVL` is the driver, `RF8Y90PX5GN` is Amara.
-2. Make the Browser pane as large as it goes, and start your screen recording on it.
-3. Say "go".
+2. Make the browser window as large as it goes, and start your screen recording on it.
+3. Run the beats in order with `play.py do N`, doing each beat's browser steps as it comes (How it is driven, below).
 
 To start over from clean data, about 5 minutes:
 

@@ -35,7 +35,7 @@ operational application. Synchronizing OpenBoxes is never what settles anything.
 | Shipment moves units on DSM; hospital's account holds them before its books do | Built; *measured* |
 | Receipt refused above what DSM moved | Built; *measured*, surfaced as HTTP 500 |
 | Custody proof of what a partner owns, no access to its systems | Built; *measured* |
-| Ownership separate from custody; carriers | Built online; *measured* on the live fleet with both phones (2026-11-04: 120 custody units sent to the carrier's wallet, Take in refused with 0 of 120 handed over, the carrier's approval on their phone counted, Take in went through). OpenBoxes counts assistants as managers, so an assistant's seat can also hand to a carrier. Each organization has a custody object issued in its owner's wallet (one unit, one unit of goods in someone's hands). Handing a sent shipment to a carrier sends the shipment's units of it to the carrier's wallet; at the door the carrier's wallet sends them to the receiving account on a request shown on their phone, and the receiver takes the shipment in only once its own account holds them. The product units still move account to account at the send, so ownership is what the account owns and custody is the carrier's; the shipment vault of section 4 is not built. The same steps run on a phone: `/dsmPhone` is a phone-sized screen (Door, Receive, Send, Carry) signed into with the wallet on the same phone; *measured* 2026-11-04 on Priya's phone over the LAN, Northgate to Lakeside, from Hand to carrier through Receive, with DSM's refusal of an over-count shown on it. Creating the shipment itself stays on the desktop |
+| Ownership separate from custody; carriers | Built online; *measured* on the live fleet with both phones (2026-11-04: 120 custody units sent to the carrier's wallet, Take in refused with 0 of 120 handed over, the carrier's approval on their phone counted, Take in went through). OpenBoxes counts assistants as managers, so an assistant's seat can also hand to a carrier. Each organization has a custody object issued in its owner's wallet (one unit, one unit of goods in someone's hands). Handing a sent shipment to a carrier sends the shipment's units of it to the carrier's wallet; at the door the carrier's wallet sends them to the receiving account on a request shown on their phone, and the receiver takes the shipment in only once its own account holds them. The product units still move account to account at the send, so ownership is what the account owns and custody is the carrier's; the shipment vault of section 4 is not built. The same steps run on a phone: `/dsmPhone` is a phone-sized screen (Door, Receive, Send, Carry) signed into with the wallet on the same phone; *measured* 2026-11-04 on Priya's phone over the LAN, Northgate to Lakeside, from Hand to carrier through Receive, with DSM's refusal of an over-count shown on it. A shipment can also be created on the phone, from stock on hand (Send tab). |
 | Books compared with DSM each minute, findings signed and append-only, correction from DSM by the owner | Built; *measured* (section 2). A finding DSM cannot sign is not saved, and the next check finds it again; read only, not run live |
 | Direct edits to stock transactions or the availability table, when they change a total | Detected; *measured* |
 | Commitments of individual database records; edits that leave totals unchanged or sit behind a count | **Not built** |
@@ -101,14 +101,14 @@ returns a peer's history.
 blocked tying sign-in to the browser that asked. DSM Amendment A28 adds that request, and sign-in now uses it.
 
 **Offline is narrow.** `offline.rs:70-107` admits only an offline-bearer `Transfer`, and refuses every vault operation.
-It needs a chip ("offline = chips", `wallet_routes.rs:585`), a contact added online, and value loaded online. The receiver
-holds the value as pending until online settlement, per tests read but not run. So **a plain phone cannot do an offline
+It needs a chip ("offline = chips", `wallet_routes.rs:585`), a contact added online, and value loaded online. What the
+receiver takes offline is kept in its offline account, apart from what it loaded, and goes online only when it unloads it. So **a plain phone cannot do an offline
 handoff**, and a match's outcomes cannot finalize offline.
 
 **A vault releases its whole amount, once,** to a recipient named per outcome. A verdict is permanent, and outcomes must exist
 at lock. So "3 of 10 damaged" cannot split a vault.
 
-**A person is one device.** The device tree is a visible hole in DSM (`CONFORMANCE_GAPS.md:357,857,1008`).
+**A person is one device.** The device tree is not built in DSM.
 
 ## 4. The architecture
 
@@ -215,7 +215,7 @@ carriers are their own organizations. Until the device tree is built, accountabi
   editing `TransactionType` through its own screens is not gated.
 - Sign-in rests on the person comparing a code. The signature covers the words and the wallet shows them, but someone who
   approves without reading can still sign in a browser they do not control. It proves the wallet's key signed after approval on
-  that device, not who pressed. The signature is not saved or published, so sign-ins are not yet an auditable record.
+  that device, not who pressed. Each sign-in is published as a record, and its signed answer is kept in `dsm_authority_record`.
 - **Whoever controls the host holds the account's keys,** and can publish a claim or lock a vault. Everything above stops someone with the database, not someone with the host.
 - **The first claim wins, and it is the installer's.** Until an owner exists the sign-in page offers nothing: it asks for a one-time setup code that the server writes to `setup-code` in its DSM data root with permissions 0600, so only whoever runs the server can read it (2026-11-05). A browser that gives the code is offered the connect code; the claim route refuses without it; one claim runs at a time; the file is deleted once the owner's claim is published. There is no way to transfer or revoke ownership, so a lost owner's wallet needs a new organization.
 - **Assigning a seat is signed by the account, not the person's wallet.** The vault's terms and the published record name who assigned it, but no phone approves it.

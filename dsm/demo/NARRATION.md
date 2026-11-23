@@ -15,9 +15,9 @@ Before the first scene the screen is Northgate's sign-in page with the story bar
 
 **START: story bar reads 1 of 14, Northgate's sign-in page**
 
-What's on screen is OpenBoxes, the open-source warehouse system. Hospitals and supply chains run it in dozens of countries. This build is the DSM version. Same application, same screens, same database. One thing is different: the application no longer gets to decide who may act or who holds what. DSM decides that, and OpenBoxes asks.
+What's on screen is OpenBoxes, the open-source warehouse system. Hospitals and supply chains run it in dozens of countries. This build is the DSM version. Same application, same screens, same database, plus DSM's own tables. One thing is different: the application no longer gets to decide who may act or who holds what. DSM decides that, and OpenBoxes asks.
 
-DSM is our deterministic state tracker. Every state change is signed, forward-only and immutable, with post-quantum cryptographic authority. There is no server in the middle and no validator set; the storage nodes you'll see referenced today are the ones this network actually runs on. It works at the edge: at the far end of a supply chain, with no internet, two phones over Bluetooth is enough to move custody.
+DSM, the Deterministic State Machine, is a state and identity layer. Every state change is signed with post-quantum signatures, forward-only, and checked by the parties themselves: no consensus, no validator set, not a blockchain. The storage nodes you'll see referenced today hold the bytes and decide nothing. It works at the edge too: offline, two phones, each with its own DSM board, can pay each other over Bluetooth with no internet. In this build the carrier's leg runs online; moving it offline is the next phase.
 
 The setup for the demo: two organizations, Northgate Medical and Lakeside District Hospital, each with its own copy of OpenBoxes and its own database. Four phones, four people, each with a DSM wallet. The panel on the right logs every request the application makes while we work: the ordinary web requests are tagged WEB2, and the ones that go to DSM are tagged DSM. Watch that panel. Nothing in this demo is mocked.
 
@@ -25,7 +25,7 @@ The setup for the demo: two organizations, Northgate Medical and Lakeside Distri
 
 **START: story bar reads 2 of 14; the username field is spotlit and "marcus.hale" is being typed**
 
-Marcus Hale owns Northgate. He types a username and nothing else. There is no password field, because this build has no passwords: the password table is gone, the password endpoints answer "retired", and there is no page anywhere to set one. There is nothing to phish and nothing to leak.
+Marcus Hale owns Northgate. He types a username and nothing else. There is no password field, because this build signs nobody in by password: the login and sign-up pages send you to the wallet sign-in, and the password API answers "There are no passwords here." A password typed anywhere opens nothing. There is nothing to phish and nothing to leak.
 
 `[CUT: Marcus's phone appears, bottom left, showing the request to sign]`
 
@@ -33,7 +33,7 @@ What happened on Enter: the server generated a one-time code for this browser an
 
 `[WAIT: the page changes to the dashboard. It stays only a few seconds: inventory value $1,440, one product in stock]`
 
-That signature is the session. It is bound to this browser's code, so it can't be replayed from anywhere else, and nothing was stored on the server that could be stolen later.
+That signature is what opened the session. It names this browser's code, so it can't be replayed for another browser, and the server keeps no password or other secret to steal.
 
 ## 3. A seat for Priya
 
@@ -43,7 +43,7 @@ This is the DSM page inside OpenBoxes. Marcus is assigning Priya Nair a seat as 
 
 `[WAIT: the form fills itself, the button is pressed, and the row "Priya Nair" appears in the seats table]`
 
-The request that just went out put seat number one into a vault on DSM with Priya's wallet named as holder. Look at the panel: a DSM entry, signed by Northgate's account. OpenBoxes keeps nothing authoritative about this; when it needs to know what Priya may do, it reads the vault. She can't pass the seat on. Only the owner's wallet can take it back, and you'll see that later.
+The request that just went out put seat number one into a vault on DSM with Priya's wallet named as holder. Look at the panel: a DSM entry, signed by Northgate's account. OpenBoxes keeps nothing authoritative about this; when it needs to know what Priya may do, it reads the vault. The vault's terms let the owner's wallet take it back, and you'll see that later.
 
 ## 4. 500 boxes arrive
 
@@ -55,9 +55,9 @@ A delivery arrives: five hundred boxes of amoxicillin, roughly nine thousand dol
 
 Now the part that's new. Each product is an object on DSM, one unit per box, and the issuer is the product registry. The registry's wallet is being asked to send five hundred units to Northgate's custody account. Until it does, Northgate owns none of them, and OpenBoxes will not let the count be recorded.
 
-`[WAIT, about a minute: the phone approves, and the page moves on its own to the Record Stock page, then to the stock card. This is the longest wait in the demo; the storage nodes are settling the transfer]`
+`[WAIT, about a minute: the phone approves, and the page moves on its own to the Record Stock page, then to the stock card. This is the longest wait in the demo; the registry's wallet is sending the units and Northgate's account is picking them up]`
 
-The registry approved, the transfer settled on the storage nodes, and only then did the Record Stock page accept the count: lot number, expiry, five hundred. The stock card now shows five hundred on hand, and DSM's custody record says the same number. Those two numbers were made to agree by construction, not by someone checking.
+The registry approved, Northgate's account received the units, and only then did the Record Stock page accept the count: lot number, expiry, five hundred. The stock card now shows five hundred on hand, and DSM's custody record says the same number. Those two numbers were made to agree by construction, not by someone checking.
 
 ## 5. Priya signs in
 
@@ -73,7 +73,7 @@ One detail that matters later: OpenBoxes checks her seat against the storage nod
 
 **START: story bar reads 6 of 14; the picture becomes Priya's phone, large, on the Send tab**
 
-We're now on Priya's phone. This is OpenBoxes served to a phone browser: the door screen, with Send, Door and Receive tabs. Same server, same session, same wallet.
+We're now on Priya's phone. This is OpenBoxes served to a phone browser: the door screen, with Door, Receive, Send and Carry tabs. Same server, same session, same wallet.
 
 `[WAIT: the "New shipment" form opens: To Lakeside, the count goes to 120]`
 
@@ -81,7 +81,7 @@ She's building a shipment to Lakeside: one hundred and twenty boxes from the sto
 
 `[WAIT: the toast "Shipping. DSM moves the custody now.", then the card for the new shipment, "Needs a carrier"]`
 
-Note the order of operations. The first thing the server did was move a hundred and twenty custody units from Northgate's account to Lakeside's account on DSM. The stock movement, the picklist, the shipment record, all of that was written only after DSM confirmed the move. If DSM had refused, OpenBoxes would have written nothing. The card says "Needs a carrier" because custody has left Northgate's books but the boxes are still on the dock.
+Note the order of operations. The first thing the server did was send a hundred and twenty units of the amoxicillin object from Northgate's account to Lakeside's account on DSM. Ownership moves at the send. The stock movement, the picklist, the shipment record, all of that was written only after DSM confirmed the move. If DSM had refused, OpenBoxes would have written nothing. The card says "Needs a carrier" because ownership has moved on DSM but the boxes are still on Northgate's dock.
 
 ## 7. The driver
 
@@ -91,7 +91,7 @@ Priya picks the carrier. Dev Okafor drives for Meridian Freight. He has no OpenB
 
 `[WAIT: "Hand to carrier" is tapped; the card changes to "With carrier"]`
 
-Northgate's account just sent a hundred and twenty units of its custody object to the driver's wallet. One unit per box. That's not money and it isn't the product's object; it's a receipt of physical possession that only Lakeside's account will accept.
+Northgate's account just sent a hundred and twenty units of its custody object to the driver's wallet. One unit per box. That's not money and it isn't the product's object; it's a receipt of physical possession, and Lakeside takes the shipment in only once its own account holds those units.
 
 `[CUT: the picture becomes the driver's phone, his wallet's history, with the 120 NGCUST just received]`
 
@@ -141,11 +141,11 @@ Back in the browser, and this is still Priya's session at Northgate, signed in a
 
 `[WAIT, up to a minute: Marcus's phone works through the revoke in his wallet]`
 
-Marcus is on his own wallet, taking seat number one back from the vault. No one touched Northgate's database, no user row was edited, no session was flushed. The revoke is a signed state change on the storage nodes, and it's final.
+Marcus is on his own wallet, taking seat number one back from the vault. No one touched Northgate's database, no user row was edited, no session was flushed. The revoke is a signed state change from Marcus's wallet, stored on the storage nodes, and it's final.
 
 `[WAIT: the page tries the dashboard and lands on the sign-in page instead: Priya is out]`
 
-Her next request. The seat check fails, the session is refused, and the page tells her why: the owner revoked the seat from their own wallet. That seat is back in Northgate's pool for someone else.
+Her next request. The seat check fails, the session is refused, and the page tells her why: the owner revoked the seat from their own wallet. That seat is back among Northgate's spare seats for someone else.
 
 ## 11. Proof across companies
 

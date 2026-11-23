@@ -1,6 +1,6 @@
 # DSM custody for OpenBoxes: integration-point map and design options
 
-Date: 2026-11-01. Branch: `feat/dsm-custody` on the fork `cryptskii/openboxes` (default branch `develop`,
+Date: 2026-11-01. Branch: `feat/dsm-custody` on the fork `Irrefutable-Labs/openboxes-dsm` (default branch `develop`,
 forked at `0493fec9`, "#6186 Support multiple local development environments simultaneously").
 
 DSM read at `origin/main` of `deterministicstatemachine/dsm`, commit `ad831f53e` (a worktree of it sits beside
@@ -14,7 +14,7 @@ identities, and a product registry that controls how units enter custody. One pr
 organization B. Custody of the inventory units is established by DSM transitions; each OpenBoxes keeps its own
 business records (product, lot, prices, people, the shipment's contents, the receipt) in its own MySQL under its
 own access control, and records its inventory transactions only once DSM has established the transition they
-describe. There is no shared OpenBoxes administrator, no shared inventory database and no blockchain consensus.
+describe. There is no shared OpenBoxes administrator, no shared inventory database and no consensus: DSM is not a blockchain.
 
 Stance agreed with the owner:
 
@@ -79,10 +79,10 @@ hole, named in section 8, not stubbed.
 - **Authored objects** (`sdk/authored_objects.rs`): signed, content-addressed, 16 KiB payload cap, appended
   under `H(DSM/object/authored-locator/v1 ‖ author ‖ topic)`. Not encrypted. "The payloads mean nothing
   here": they establish who said what and in what order per author, nothing about what anyone owns.
-- **Rules from the DSM repo's `CLAUDE.md`** that bind this fork's DSM-facing code: nothing fake or stubbed in
+- **Rules from DSM's contributor rules** that bind this fork's DSM-facing code: nothing fake or stubbed in
   any shape, no `TODO` markers, protobuf on every DSM wire path (no JSON), Base32 Crockford at display edges
-  (no hex), no wall-clock time in DSM validity, BLAKE3 domain-separated and SPHINCS+ only, no `Co-Authored-By`
-  trailers, descriptive branch names. Leave a visible hole rather than a stand-in.
+  (no hex), no wall-clock time in DSM validity, BLAKE3 domain-separated and SPHINCS+ only, descriptive branch
+  names. Leave a visible hole rather than a stand-in.
 
 ## 4. Topology
 
@@ -93,7 +93,7 @@ Product registry                Organization A                     Organization 
   dsm-app-host "registry"         dsm-app-host per own warehouse     dsm-app-host per own warehouse
   large fixed supply              custody                            custody
         │                               │                                  │
-        └── connections, TLS relays, bilateral transfers ──────────────────┘
+        └── connections, TLS relays, online transfers    ──────────────────┘
                                   storage set (pinned register)
 ```
 
@@ -138,7 +138,7 @@ against the product in OpenBoxes.
   no shipment contents.
 
 Proves: conservation (units are neither created nor duplicated by a shipment), exclusive custody (only the
-holder's device can move them), bilateral acceptance (B's receipt is B's own transition, not A's claim),
+holder's device can move them), the receiver's own check (B's account credits the transfer only after checking it; B's receipt rests on B's account, not A's claim),
 issuance authority (the policy names its creator), and third-party verifiability (owns proof).
 Does not prove: lot or serial identity of the units (every unit of a product is interchangeable), or physical
 reality. Cost: one SPHINCS+ signed transition per shipment, whatever the quantity.
@@ -166,7 +166,7 @@ Proves: attribution (A signed it), order per author, and content addressing. Doe
 (A can state anything, twice), does not stop a double-release, and gives a third party no way to verify
 what either side owns. Payloads are public to the storage set, so only commitments can go in them. On its own this is a
 signed log, not custody. It can sit beside A as a public, append-only trail of commitments if the owner
-wants one, but it adds no custody fact a transfer does not already establish bilaterally.
+wants one, but it adds no custody fact a transfer does not already establish.
 
 ### What Connect adds to each option
 
@@ -281,7 +281,7 @@ unique per peer, not globally.
 | The ingress client | `src/main/groovy/org/pih/warehouse/dsm/DsmHostClient.groovy` (frames requests, reads answers, decides nothing), `Base32Crockford.groovy` (DSM's encoder mirrored), `DsmSteps`, `DsmHostException`, `DsmCustodyException` |
 | Each instance's records | `grails-app/domain/org/pih/warehouse/dsm/`: `DsmWarehouseAccount`, `DsmProductToken`, `DsmConnection` (this account's side of a connection), `DsmCustodyTransfer` (SHIPMENT, STOCK_TRANSFER, INBOUND, ADMITTED or BURN), `DsmAdmission`, and at a registry `DsmReleaseApproval` and `DsmReleaseDecision`; migration `grails-app/migrations/0.9.x/changelog-2026-11-01-1200-create-dsm-custody-tables.xml` |
 | The services | `grails-app/services/org/pih/warehouse/dsm/`: `DsmAccountService` (accounts, objects, this side of a connection), `DsmAdmissionService` (both sides of an admission), `DsmCustodyService` (the hooks above) |
-| The API | `grails-app/controllers/org/pih/warehouse/api/DsmCustodyApiController.groovy`, under `/api/dsm`: `accounts`, `tokens`, `connections`, `admissions`, `releases` (`/approvals`, `/declines`, `/decisions`), `inbound`, `transfers`. Listing is for admins, acting for superusers; a DSM refusal is a 400 with DSM's reason |
+| The API | `grails-app/controllers/org/pih/warehouse/api/DsmCustodyApiController.groovy`, under `/api/dsm`: `accounts`, `tokens`, `connections`, `admissions`, `releases` (`/approvals`, `/declines`, `/decisions`), `inbound`, `transfers`. Listing is for managers; requesting admissions, deciding releases and asking for proofs is for admins; registering hosts, issuing, adopting and connecting is for superusers; a DSM refusal is a 400 with DSM's reason |
 | The storage set for tests | `dsm/fleet/`: a Rust crate that includes the SDK's own node harness from the DSM checkout beside this one and runs it as a process |
 | The test | `src/integration-test/groovy/org/pih/warehouse/slice/spec/dsm/DsmCustodyShipmentSpec.groovy`, with `common/dsm/DsmTestFleet`, `DsmTestHost` and `DsmTestOpenBoxes`: real storage nodes, one host per account, and three OpenBoxes instances with three MySQL databases. Organization A is the instance the spec runs in; organization B and the registry are the application started as processes of their own, reached only over HTTP |
 
@@ -369,7 +369,7 @@ DSM Connect links an application to a person's wallet, as `wildstate-release/doc
 - **Objects are issued in the wallet.** The wallet has its own creation wizard, and an issued object's whole supply goes to
   its creator. So the cap is set once, and what has not been released stays with the creator and is counted.
 - **Organization, warehouses, then people.** Each person has their own wallet. The owner also wants a device tree, but its
-  store is not built at DSM `ad831f53e` (`CONFORMANCE_GAPS.md`: the add-device routes were deleted), so it stays a visible
+  store is not built in DSM (the add-device routes were deleted at `ad831f53e`), so it stays a visible
   hole until DSM builds it.
 - **Permissions are seats in custom DLVs.** Each access level is an object whose supply is the cap, released by hand as the
   organization grows, so every seat is accounted for. A seat is one unit locked in a vault. These are DSM's existing
