@@ -9,12 +9,26 @@
  **/
 package org.pih.warehouse.inventory
 
+import org.pih.warehouse.dsm.DsmStockWrites
 import grails.util.Holders
 import org.pih.warehouse.core.Constants
 import org.pih.warehouse.core.Location
 import org.pih.warehouse.product.Product
 
 class TransactionEntry implements Comparable, Serializable {
+
+    def beforeInsert() {
+        DsmStockWrites.check(transaction, "write")
+    }
+
+    def beforeUpdate() {
+        DsmStockWrites.check(transaction, "change")
+    }
+
+    def beforeDelete() {
+        DsmStockWrites.check(transaction, "delete")
+    }
+
 
     String id
     Integer quantity

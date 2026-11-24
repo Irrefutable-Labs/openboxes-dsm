@@ -29,6 +29,7 @@ import org.pih.warehouse.product.Category
 import org.pih.warehouse.product.Product
 import org.pih.warehouse.DateUtil
 import org.pih.warehouse.core.Location
+import org.pih.warehouse.dsm.DsmCustodyService
 import org.pih.warehouse.report.InventoryReportCommand
 import org.springframework.web.multipart.MultipartHttpServletRequest
 import org.springframework.web.multipart.commons.CommonsMultipartFile
@@ -42,6 +43,7 @@ class InventoryController {
     def productService
     def dashboardService
     def inventoryService
+    DsmCustodyService dsmCustodyService
     def requisitionService
     def inventorySnapshotService
     def productAvailabilityService
@@ -907,6 +909,8 @@ class InventoryController {
 
                 // Validate the transaction object
                 if (!transaction.hasErrors() && transaction.validate()) {
+                    // DSM first: at a DSM warehouse the change is a burn or a credit from the registry.
+                    dsmCustodyService.backStockChange(transaction)
                     transaction.save(failOnError: true)
                     flash.message = "Successfully saved transaction"
                     def productId = command.transactionEntries.first()?.inventoryItem?.product?.id
@@ -993,6 +997,8 @@ class InventoryController {
 
                 // Validate the transaction object
                 if (!transaction?.hasErrors() && transaction?.validate()) {
+                    // DSM first: at a DSM warehouse a debit is a burn.
+                    dsmCustodyService.backStockChange(transaction)
                     transaction.save(failOnError: true)
                     flash.message = "Successfully saved transaction"
                     redirect(controller: "inventoryItem", action: "showStockCard", id: productIds[0])
@@ -1088,6 +1094,8 @@ class InventoryController {
             try {
                 // Validate the transaction object
                 if (!transactionInstance.hasErrors() && transactionInstance.validate()) {
+                    // DSM first: at a DSM warehouse a credit is a transfer from the registry.
+                    dsmCustodyService.backStockChange(transactionInstance)
                     transactionInstance.save(failOnError: true)
                     flash.message = "Successfully saved transaction"
 

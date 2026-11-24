@@ -1,5 +1,6 @@
 package org.pih.warehouse.inventory
 
+import org.pih.warehouse.dsm.DsmCustodyService
 import grails.testing.gorm.DataTest
 import spock.lang.Shared
 import spock.lang.Specification
@@ -49,6 +50,7 @@ class CycleCountTransactionServiceSpec extends Specification implements DataTest
 
     void setup() {
         cycleCountTransactionService = new CycleCountTransactionService()
+        cycleCountTransactionService.dsmCustodyService = Stub(DsmCustodyService)
 
         // Set up the transaction types
         baselineTransactionType = new TransactionType()

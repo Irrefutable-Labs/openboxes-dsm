@@ -49,6 +49,8 @@ class CycleCountServiceSpec extends Specification implements DataTest {
     }
 
     void setup() {
+        // This spec writes stock transactions directly: the rule for them is DSM's flows, tested with those flows.
+        org.pih.warehouse.dsm.DsmStockWrites.grant("a unit test")
         cycleCountService = new CycleCountService()
 
         // The service stamps createdBy/updatedBy from the logged-in user; give it one.
@@ -66,6 +68,7 @@ class CycleCountServiceSpec extends Specification implements DataTest {
     }
 
     void cleanup() {
+        org.pih.warehouse.dsm.DsmStockWrites.reset()
         // The current user lives in a static thread-local; clear it so it does not leak into
         // whatever spec runs next on this thread.
         new AuthService().setCurrentUser(null)

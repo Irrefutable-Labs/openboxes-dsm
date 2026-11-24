@@ -10,6 +10,7 @@
 package org.pih.warehouse.core
 
 import grails.util.Holders
+import org.pih.warehouse.dsm.DsmAuthorityService
 import util.StringUtil
 import grails.converters.JSON
 
@@ -64,6 +65,11 @@ class User extends Person {
     }
 
 
+    /** Once the organization has an owner, DSM alone says what a person may do, and role rows give nothing. */
+    private static DsmAuthorityService dsmAuthority() {
+        return Holders.applicationContext.getBean("dsmAuthorityService", DsmAuthorityService)
+    }
+
     /**
      * @return the highest role for this user
      */
@@ -74,24 +80,32 @@ class User extends Person {
 
 
     List<Role> getRolesByCurrentLocation(Location currentLocation) {
-        if (!currentLocation) return []
+        if (!currentLocation || dsmAuthority().ownerExists()) return []
         return locationRoles?.findAll { it.location == currentLocation }?.collect { it.role } ?: []
     }
 
     def getEffectiveRoles(Location currentLocation) {
+        if (dsmAuthority().ownerExists()) return dsmAuthority().rolesFor(this)
         def defaultRoles = roles?.collect { it } ?: []
         def rolesByLocation = getRolesByCurrentLocation(currentLocation)
         defaultRoles.addAll(rolesByLocation)
         return defaultRoles
     }
 
+    /** The location roles that count: none once DSM decides. */
+    Collection<LocationRole> grantedLocationRoles() {
+        return dsmAuthority().ownerExists() ? [] : locationRoles
+    }
+
     def getAllRoles() {
+        if (dsmAuthority().ownerExists()) return dsmAuthority().rolesFor(this)
         def defaultRoles = roles?.collect { it } ?: []
         defaultRoles.addAll(locationRoles?.collect { it.role } ?: [])
         return defaultRoles
     }
 
     List<String> getAllRoleNames() {
+        if (dsmAuthority().ownerExists()) return dsmAuthority().rolesFor(this)*.roleType*.name()
         return roles?.roleType*.name()
     }
 
@@ -139,6 +153,7 @@ class User extends Person {
     }
 
     Boolean hasDefaultRole(RoleType roleType) {
+        if (dsmAuthority().ownerExists()) return dsmAuthority().rolesFor(this).any { Role role -> role.roleType == roleType }
         return roles?.any { Role role -> role.roleType == roleType} ?: false
     }
 

@@ -115,6 +115,17 @@ class ErrorsController {
         render(view: "/error")
     }
 
+    /** DSM's refusal is an answer, not a server fault: the person sees why. */
+    def handleDsmRefusal() {
+        Throwable root = ExceptionUtils.getRootCause(request.getAttribute('exception')) ?: request.getAttribute('exception')
+        response.status = 400
+        if (RequestUtil.isAjax(request)) {
+            render([errorCode: 400, errorMessage: root?.message] as JSON)
+            return
+        }
+        render(text: "<!doctype html><title>Refused</title><h1>Refused</h1><p>${root?.message?.encodeAsHTML()}</p><p><a href=\"javascript:history.back()\">Back</a></p>", contentType: "text/html")
+    }
+
     def handleConstraintViolation() {
         if (RequestUtil.isAjax(request)) {
             if (request?.method == HttpMethod.DELETE.name()) {

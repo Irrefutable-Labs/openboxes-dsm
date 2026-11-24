@@ -9,6 +9,7 @@
  **/
 package org.pih.warehouse.inventory
 
+import org.pih.warehouse.dsm.DsmStockWrites
 import org.pih.warehouse.auth.AuthService
 import org.pih.warehouse.core.Constants
 import org.pih.warehouse.core.Location
@@ -38,12 +39,18 @@ import grails.util.Holders
 class Transaction implements Comparable, Serializable {
 
     def beforeInsert() {
+        DsmStockWrites.check(this, "write")
         createdBy = AuthService.currentUser
         updatedBy = AuthService.currentUser
     }
 
     def beforeUpdate() {
+        DsmStockWrites.check(this, "change")
         updatedBy = AuthService.currentUser
+    }
+
+    def beforeDelete() {
+        DsmStockWrites.check(this, "delete")
     }
 
     def publishSaveEvent() {

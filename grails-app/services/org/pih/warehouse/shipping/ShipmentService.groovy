@@ -30,6 +30,7 @@ import org.pih.warehouse.core.ListCommand
 import org.pih.warehouse.core.Location
 import org.pih.warehouse.core.Person
 import org.pih.warehouse.core.User
+import org.pih.warehouse.dsm.DsmCustodyService
 import org.pih.warehouse.inventory.InventoryItem
 import org.pih.warehouse.inventory.Transaction
 import org.pih.warehouse.inventory.TransactionEntry
@@ -58,6 +59,7 @@ class ShipmentService {
     ShipmentEventManager shipmentEventManager
     MessageLocalizer messageLocalizer
     def inventoryService
+    DsmCustodyService dsmCustodyService
     TransactionIdentifierService transactionIdentifierService
     ShipmentIdentifierService shipmentIdentifierService
     ReceiptV2Service receiptV2Service
@@ -1136,6 +1138,13 @@ class ShipmentService {
 
         // don't allow the shipment to go out if it has errors, or if this shipment has already been shipped, or if the shipdate is after today
         if (!shipmentInstance.hasErrors()) {
+            // DSM decides whether the units leave this warehouse: for warehouses with a DSM account, the custody
+            // transfer is established between the two warehouses' own accounts before OpenBoxes records the
+            // shipment as sent (docs/plans/2026-11-01-dsm-custody-integration.md). A refusal stops the send here.
+            if (shipmentInstance.origin?.isWarehouse() && debitStockOnSend) {
+                dsmCustodyService.releaseOnSend(shipmentInstance, shipDate)
+            }
+
             // Add comment to shipment (as long as there's an actual comment
             // after trimming off the extra spaces)
             if (comment) {
@@ -1341,6 +1350,9 @@ class ShipmentService {
 
             // only need to create a transaction if the destination is a warehouse
             if (shipmentInstance.destination?.isWarehouse() && creditStockOnReceipt) {
+                // DSM decides whether the units are in this warehouse's custody before the inbound transaction
+                // is written (docs/plans/2026-11-01-dsm-custody-integration.md).
+                dsmCustodyService.requireEstablishedOnReceive(shipmentInstance.receipt)
                 createInboundTransaction(shipmentInstance)
             }
         } else {
@@ -1782,6 +1794,7 @@ class ShipmentService {
 
 
     void rollbackLastEvent(Shipment shipmentInstance) {
+        dsmCustodyService.refuseRollback(shipmentInstance)
 
         Event eventInstance = shipmentInstance.mostRecentSystemEvent
 

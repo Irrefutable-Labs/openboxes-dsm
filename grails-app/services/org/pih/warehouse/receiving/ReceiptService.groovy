@@ -24,6 +24,7 @@ import org.pih.warehouse.core.Event
 import org.pih.warehouse.core.EventCode
 import org.pih.warehouse.core.IdentifierService
 import org.pih.warehouse.core.Location
+import org.pih.warehouse.dsm.DsmCustodyService
 import org.pih.warehouse.core.LocationService
 import org.pih.warehouse.core.LocationType
 import org.pih.warehouse.core.localization.MessageLocalizer
@@ -48,6 +49,7 @@ class ReceiptService {
     AuthService authService
     ShipmentService shipmentService
     InventoryService inventoryService
+    DsmCustodyService dsmCustodyService
     LocationService locationService
     ReceiptIdentifierService receiptIdentifierService
     ReceiptV2Service receiptV2Service
@@ -284,6 +286,9 @@ class ReceiptService {
                 // Create receipt, event, and transaction
                 savePartialReceipt(partialReceipt, true)
                 savePartialReceiptEvent(partialReceipt)
+                // DSM decides whether the units are in this warehouse's custody before the inbound transaction
+                // is written (docs/plans/2026-11-01-dsm-custody-integration.md).
+                dsmCustodyService.requireEstablishedOnReceive(partialReceipt)
                 Transaction transaction = createInboundTransaction(partialReceipt)
 
                 // Trigger shipment status transition event to handle email notifications
@@ -414,6 +419,7 @@ class ReceiptService {
     }
 
     void rollbackPartialReceipts(Shipment shipment) {
+        dsmCustodyService.refuseRollback(shipment)
         log.info "Rollback partial receipts for shipment " + shipment
         if (!shipment) {
             throw new IllegalArgumentException("Cannot rollback without valid shipment")
@@ -446,6 +452,7 @@ class ReceiptService {
     }
 
     void rollbackLastReceipt(Shipment shipment) {
+        dsmCustodyService.refuseRollback(shipment)
         List<Receipt> receivedReceipts = shipment.receipts.findAll { Receipt receipt -> receipt.receiptStatusCode == ReceiptStatusCode.RECEIVED }.sort {
             it.dateCreated
         }

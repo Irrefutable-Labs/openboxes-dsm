@@ -1,0 +1,22 @@
+[package]
+name = "openboxes-dsm-fleet"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "The DSM storage set the OpenBoxes custody integration test runs against: the SDK's own node harness (dsm_sdk/src/test_support/nodes.rs), run as a process the Grails test starts"
+
+# This crate is its own workspace: it lives in the OpenBoxes checkout, beside
+# the DSM checkout at origin/main it builds against (../../../dsm-main). The
+# lockfile is DSM's own, so every DSM crate resolves to the versions DSM
+# verified.
+[workspace]
+
+[dependencies]
+dsm = { path = "../../../dsm-main/dsm_client/deterministic_state_machine/dsm", default-features = false }
+dsm_storage_node = { path = "../../../dsm-main/dsm_storage_node" }
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "net", "time", "signal", "io-std", "io-util"] }
+axum = "0.8"
+axum-server = { version = "0.8", features = ["tls-rustls"] }
+rcgen = "0.14.8"
+rustls = { version = "0.23.37", features = ["ring"] }

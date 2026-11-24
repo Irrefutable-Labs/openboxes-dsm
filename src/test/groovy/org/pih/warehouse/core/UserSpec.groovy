@@ -1,6 +1,8 @@
 package org.pih.warehouse.core
 
 import grails.testing.gorm.DomainUnitTest
+import org.grails.spring.beans.factory.InstanceFactoryBean
+import org.pih.warehouse.dsm.DsmAuthorityService
 import spock.lang.Specification
 
 import org.pih.warehouse.core.Location
@@ -10,6 +12,47 @@ import org.pih.warehouse.core.RoleType
 import org.pih.warehouse.core.User
 
 class UserSpec extends Specification implements DomainUnitTest<User> {
+
+    private void authority(boolean hasOwner, List<Role> seats) {
+        DsmAuthorityService authority = Stub(DsmAuthorityService) {
+            ownerExists() >> hasOwner
+            rolesFor(_) >> seats
+        }
+        defineBeans { dsmAuthorityService(InstanceFactoryBean, authority, DsmAuthorityService) }
+    }
+
+    void setup() {
+        authority(false, [])
+    }
+
+    void 'a role row gives nothing once the organization has an owner: only DSM does'() {
+        given: 'a user with an admin role row, here and at a location'
+        Location location = new Location(name: 'boston')
+        Role admin = new Role(roleType: RoleType.ROLE_ADMIN)
+        Role browser = new Role(roleType: RoleType.ROLE_BROWSER)
+        User user = new User(roles: [admin], locationRoles: [new LocationRole(location: location, role: admin)])
+
+        when: 'DSM gives them a browser seat'
+        authority(true, [browser])
+
+        then: 'that seat is everything they have, by every way of asking'
+        user.getEffectiveRoles(location) == [browser]
+        user.getAllRoles() == [browser]
+        user.getAllRoleNames() == ['ROLE_BROWSER']
+        user.getRolesByCurrentLocation(location) == []
+        user.grantedLocationRoles() == []
+        !user.hasDefaultRole(RoleType.ROLE_ADMIN)
+        user.hasDefaultRole(RoleType.ROLE_BROWSER)
+        user.getHighestRole(location) == browser
+        !user.hasRoles(location, [RoleType.ROLE_ADMIN])
+
+        when: 'DSM gives them nothing'
+        authority(true, [])
+
+        then: 'they have nothing'
+        !user.getEffectiveRoles(location)
+        !user.hasPrimaryRole(location)
+    }
 
     void 'locationRolePairs should return the expected location role pairs'() {
         given: ' some locations and roles'

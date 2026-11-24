@@ -15,6 +15,7 @@ import org.pih.warehouse.core.OrderedDataGroup
 import org.pih.warehouse.core.date.JavaUtilDateParser
 import org.pih.warehouse.core.localization.MessageLocalizer
 import org.pih.warehouse.core.validation.ObjectValidationResult
+import org.pih.warehouse.dsm.DsmCustodyService
 import org.pih.warehouse.inventory.InventoryItem
 import org.pih.warehouse.inventory.InventoryItemByProductLot
 import org.pih.warehouse.inventory.InventoryItemManager
@@ -71,6 +72,7 @@ class ReceiptV2Service {
     MessageLocalizer messageLocalizer
     InventoryItemManager inventoryItemManager
     ShipmentService shipmentService
+    DsmCustodyService dsmCustodyService
     ReceiptTransactionManager receiptTransactionManager
     GrailsApplication grailsApplication
 
@@ -333,14 +335,19 @@ class ReceiptV2Service {
     ReceiptDto completeReceipt(ReceiptCompleteRequestCommand command) {
         Receipt receipt = command.receipt
 
-        // The receipt must be flagged as received before the canceled quantities are computed - the shipment item
-        // quantity getters only count receipt items that belong to RECEIVED receipts.
-        receipt.receiptStatusCode = ReceiptStatusCode.RECEIVED
         if (command.dateDelivered) {
             // Receipt.actualDeliveryDate is a (legacy) java.util.Date, so convert at the domain boundary.
             receipt.actualDeliveryDate = JavaUtilDateParser.asDate(command.dateDelivered)
         }
 
+        // DSM decides whether the units are in this warehouse's custody: for warehouses with a DSM account, the
+        // inbound transaction is written only once the destination's own account holds the shipment's transfer as
+        // accepted (docs/plans/2026-11-01-dsm-custody-integration.md). A refusal leaves the receipt pending.
+        dsmCustodyService.requireEstablishedOnReceive(receipt)
+
+        // The receipt must be flagged as received before the canceled quantities are computed - the shipment item
+        // quantity getters only count receipt items that belong to RECEIVED receipts.
+        receipt.receiptStatusCode = ReceiptStatusCode.RECEIVED
         cancelRemainingQuantities(receipt, command.itemsToComplete)
         zeroOutEmptyReceivedQuantities(receipt)
 

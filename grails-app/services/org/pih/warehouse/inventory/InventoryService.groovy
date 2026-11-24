@@ -9,6 +9,7 @@
  **/
 package org.pih.warehouse.inventory
 
+import org.pih.warehouse.dsm.DsmStockWrites
 import grails.gorm.transactions.Transactional
 import grails.plugins.csv.CSVWriter
 import grails.validation.ValidationException
@@ -21,6 +22,7 @@ import org.pih.warehouse.auth.AuthService
 import org.pih.warehouse.core.ConfigService
 import org.pih.warehouse.core.Constants
 import org.pih.warehouse.core.Location
+import org.pih.warehouse.dsm.DsmCustodyService
 import org.pih.warehouse.core.LocationGroup
 import org.pih.warehouse.core.Tag
 import org.pih.warehouse.core.User
@@ -63,6 +65,7 @@ class InventoryService implements ApplicationContextAware {
 
     RecordStockProductInventoryTransactionService recordStockProductInventoryTransactionService
     ProductAvailabilityService productAvailabilityService
+    DsmCustodyService dsmCustodyService
     ConfigService configService
     InventoryItemManager inventoryItemManager
     MessageLocalizer messageLocalizer
@@ -1434,6 +1437,8 @@ class InventoryService implements ApplicationContextAware {
         Date adjustmentTransactionDate = new Date(cmd.transactionDate.time + 1000)
 
         try {
+            // The baseline is written before the adjustment, and the adjustment is what goes through DSM below.
+            DsmStockWrites.grant("record stock")
             // 1. Calculate the current available items for the given product
             AvailableItemMap availableItems = productAvailabilityService.getAvailableItemsAtDateAsMap(
                     currentLocation,
@@ -1526,6 +1531,9 @@ class InventoryService implements ApplicationContextAware {
             if (!adjustmentTransaction.transactionEntries) {
                 return cmd
             }
+
+            // DSM first: at a DSM warehouse the counted difference is a burn or a credit from the registry.
+            dsmCustodyService.backStockChange(adjustmentTransaction)
 
             if (adjustmentTransaction.hasErrors() || !adjustmentTransaction.save()) {
                 adjustmentTransaction.errors.allErrors.each { error ->
@@ -1969,6 +1977,9 @@ class InventoryService implements ApplicationContextAware {
 
             transaction.addToTransactionEntries(transactionEntry)
 
+            // DSM first: the adjustment is a burn or a credit from the registry at a DSM warehouse.
+            dsmCustodyService.backStockChange(transaction)
+
             if (!transaction.save()) {
                 throw new ValidationException("Error saving transaction", transaction.errors)
             }
@@ -2038,6 +2049,16 @@ class InventoryService implements ApplicationContextAware {
 
             // To prevent the product availability from being refreshed (we'll trigger it ourselves)
             transaction.disableRefresh = command.disableRefresh
+
+            // DSM decides whether the units move: between two warehouses that are both on DSM the units are
+            // sent account to account, and the destination's account must hold them, before either side's
+            // transaction is written (docs/plans/2026-11-01-dsm-custody-integration.md).
+            if (!transaction.hasErrors()) {
+                dsmCustodyService.transferBetweenWarehouses(
+                        transferOut ? location : otherLocation,
+                        transferOut ? otherLocation : location,
+                        inventoryItem.product, quantity, transaction.transactionNumber)
+            }
 
             if (!transaction.hasErrors() && transaction.save()) {
 

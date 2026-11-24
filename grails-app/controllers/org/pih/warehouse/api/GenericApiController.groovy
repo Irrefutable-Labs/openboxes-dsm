@@ -9,6 +9,8 @@
  **/
 package org.pih.warehouse.api
 
+import org.pih.warehouse.dsm.DsmCustodyException
+import org.pih.warehouse.dsm.DsmProtectedDomains
 import grails.converters.JSON
 import org.grails.web.json.JSONArray
 
@@ -33,6 +35,7 @@ class GenericApiController {
     }
 
     def create() {
+        refuseProtected()
         Object result
         def jsonObject = request.JSON
         if (jsonObject instanceof JSONArray) {
@@ -45,13 +48,21 @@ class GenericApiController {
     }
 
     def update() {
+        refuseProtected()
         Object domainObject = genericApiService.updateObject(params.resource, params.id, request.JSON)
         render([data: domainObject] as JSON)
     }
 
     def delete() {
+        refuseProtected()
         genericApiService.deleteObject(params.resource, params.id)
         render status: 204
     }
 
+
+    private void refuseProtected() {
+        if (DsmProtectedDomains.refuses(params.resource)) {
+            throw new DsmCustodyException("${params.resource} is not written through the generic API: it changes only through its own flow")
+        }
+    }
 }

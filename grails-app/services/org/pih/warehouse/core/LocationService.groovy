@@ -206,7 +206,7 @@ class LocationService {
 
     def getRequestorLocations(User user) {
         def locations = new HashSet()
-        List locationRolesForRequestor = user?.locationRoles.findAll {it.role.roleType == RoleType.ROLE_REQUESTOR}
+        List locationRolesForRequestor = user?.grantedLocationRoles().findAll {it.role.roleType == RoleType.ROLE_REQUESTOR}
 
         if (locationRolesForRequestor) {
             locations = locationRolesForRequestor.collect {it.location}
@@ -296,7 +296,7 @@ class LocationService {
 
         def requiredRoles = RoleType.listRoleTypesForLocationChooser()
 
-        if (isRequestor && !user.locationRoles && !inRoleBrowser) {
+        if (isRequestor && !user.grantedLocationRoles() && !inRoleBrowser) {
             locations = getLocations(null, null)
             locations = locations.findAll {it -> it.supportedActivities && it.supports(ActivityCode.SUBMIT_REQUEST) }
         } else if (requestorInAnyLocation && inRoleBrowser) {
@@ -308,7 +308,7 @@ class LocationService {
             }
             // If a user doesn't have at least one of the requiredRoles by default, get locations where the user HAS any of those roles
             if (!inRoleBrowser && !inRoleAssistant && !inRoleManager && !inRoleAdmin && !inRoleSuperuser) {
-                user.locationRoles.each { LocationRole locationRole ->
+                user.grantedLocationRoles().each { LocationRole locationRole ->
                     if (requiredRoles.contains(locationRole.role.roleType)) {
                         locations += locationRole.location
                     }

@@ -5,7 +5,9 @@ import grails.testing.services.ServiceUnitTest
 import grails.validation.ValidationException
 
 import org.pih.warehouse.auth.AuthService
+import org.grails.spring.beans.factory.InstanceFactoryBean
 import org.pih.warehouse.core.localization.MessageLocalizer
+import org.pih.warehouse.dsm.DsmAuthorityService
 
 import spock.lang.Specification
 import spock.lang.Unroll
@@ -33,6 +35,8 @@ class UserServiceRoleValidationSpec extends Specification implements ServiceUnit
     }
 
     void setup() {
+        DsmAuthorityService authority = Stub(DsmAuthorityService) { ownerExists() >> false }
+        defineBeans { dsmAuthorityService(InstanceFactoryBean, authority, DsmAuthorityService) }
         adminRole = new Role(roleType: RoleType.ROLE_ADMIN, name: 'Admin').save(validate: false)
         browserRole = new Role(roleType: RoleType.ROLE_BROWSER, name: 'Browser').save(validate: false)
         managerRole = new Role(roleType: RoleType.ROLE_MANAGER, name: 'Manager').save(validate: false)

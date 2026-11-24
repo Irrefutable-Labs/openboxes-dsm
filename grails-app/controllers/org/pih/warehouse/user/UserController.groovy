@@ -30,6 +30,7 @@ import org.pih.warehouse.core.User
 import org.pih.warehouse.core.UserDataService
 
 class UserController {
+    def dsmAuthorityService
 
     static allowedMethods = [save: "POST", update: "POST", delete: "GET"]
     MailService mailService
@@ -71,6 +72,9 @@ class UserController {
 
 
     def impersonate() {
+        if (dsmAuthorityService.ownerExists()) {
+            throw new org.pih.warehouse.dsm.DsmCustodyException("nobody acts as someone else here: authority comes from each person's own wallet")
+        }
         def userInstance = User.get(params.id)
         if (session.impersonateUserId) {
             flash.message = "Already impersonstating user ${session.user.username}"
