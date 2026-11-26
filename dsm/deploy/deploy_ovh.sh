@@ -54,7 +54,7 @@ echo "==> .env (database passwords kept, made once)"
 echo "==> firewall and HTTPS (once)"
 "${SSH[@]}" "sudo ufw status | grep -q '^$RELAY/tcp' || sudo ufw allow $RELAY/tcp >/dev/null"
 "${SSH[@]}" "grep -q '^$SITE ' /opt/https/Caddyfile || { printf '\n$SITE {\n    redir / /openboxes/ 302\n    reverse_proxy 127.0.0.1:$APP\n}\n' | sudo tee -a /opt/https/Caddyfile >/dev/null \
-  && cd /opt/https && sudo timeout 60 docker compose -p https exec -T -w /etc/caddy https caddy reload; }"
+  && cd /opt/https && sudo timeout 60 docker compose -p https exec -T -w /etc/caddy https caddy reload || true; }"
 
 echo "==> starting (the application takes a few minutes the first time: it creates its database)"
 "${SSH[@]}" "cd $DIR && sudo docker compose -p $PROJ up -d --force-recreate app account mysql"
