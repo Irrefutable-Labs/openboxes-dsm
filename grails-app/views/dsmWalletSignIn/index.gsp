@@ -26,6 +26,11 @@
         .refused { padding: 12px 14px; border-radius: 10px; background: var(--bad-bg); color: var(--bad); font-weight: 600; margin-bottom: 14px; }
         .qr { text-align: center; }
         .qr img { width: 240px; height: 240px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin: 12px 0 6px; }
+        .connect-code { min-height: 84px; resize: vertical; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+        .wallet-link { display: block; width: 100%; min-height: 50px; margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--primary); color: #fff; font-weight: 700; text-align: center; }
+        .wallet-link[hidden] { display: none; }
+        .copy-code { background: #dceafa; color: var(--bar); }
+        .copy-result { min-height: 22px; margin-top: 4px; font-size: 13px; }
         ol { color: var(--ink); padding-left: 22px; margin: 10px 0; text-align: left; } ol li { margin: 4px 0; }
         .failed { color: var(--bad); font-weight: 600; }
         a { color: var(--primary); text-decoration: none; font-weight: 600; }
@@ -55,11 +60,18 @@
         <p>Nobody owns it yet. The first wallet to connect and sign becomes its owner. There are no passwords here, and no way to set one.</p>
         <g:if test="${code}">
             <img src="${createLink(action: 'qr')}" alt="Connect code"/>
+            <label for="claim-connect-code">Connect code (the exact text in the QR)</label>
+            <textarea id="claim-connect-code" class="connect-code" readonly spellcheck="false">${code.encodeAsHTML()}</textarea>
+            <button type="button" class="copy-code" data-copy-code="claim-connect-code">Copy connect code</button>
+            <div class="copy-result" id="claim-copy-result" role="status"></div>
+            <a class="wallet-link" href="${code.encodeAsHTML()}">Open DSM wallet on this phone</a>
             <ol>
-                <li>Open your DSM wallet and go to <strong>Apps</strong>.</li>
-                <li>Tap <strong>Scan code</strong> and scan this.</li>
-                <li>Read what it asks for, then <strong>Approve</strong>, and approve the owner statement it asks you to sign next.</li>
+                <li>On this phone, open the wallet above. It receives this code and returns here after you approve the connection.</li>
+                <li>Or copy the code, open your wallet, and paste it in <strong>Apps → Connect an app</strong>, then tap <strong>READ</strong>.</li>
+                <li>With another phone, scan the QR. Read the wallet's request and approve it.</li>
+                <li>When the owner statement is ready, open the wallet again, go to <strong>Apps → Waiting</strong>, and approve it.</li>
             </ol>
+            <a class="wallet-link" id="claim-approve-link" href="${code.encodeAsHTML()}" hidden>Open wallet to approve owner statement</a>
         </g:if>
         <div id="claim-state">Waiting for a wallet to connect.</div>
     </div>
@@ -81,10 +93,15 @@
         <p>Connect your wallet to this organization.</p>
         <g:if test="${code}">
             <img src="${createLink(action: 'qr')}" alt="Connect code"/>
+            <label for="join-connect-code">Connect code (the exact text in the QR)</label>
+            <textarea id="join-connect-code" class="connect-code" readonly spellcheck="false">${code.encodeAsHTML()}</textarea>
+            <button type="button" class="copy-code" data-copy-code="join-connect-code">Copy connect code</button>
+            <div class="copy-result" id="join-copy-result" role="status"></div>
+            <a class="wallet-link" href="${code.encodeAsHTML()}">Open DSM wallet on this phone</a>
             <ol>
-                <li>Open your DSM wallet and go to <strong>Apps</strong>.</li>
-                <li>Tap <strong>Scan code</strong> and scan this.</li>
-                <li>Read what it asks for, then <strong>Approve</strong>.</li>
+                <li>On this phone, open the wallet above. It receives this code and returns here after you approve.</li>
+                <li>Or copy the code and paste it in <strong>Apps → Connect an app</strong>, then tap <strong>READ</strong>.</li>
+                <li>With another phone, scan the QR. Read the wallet's request and approve it.</li>
             </ol>
             <div id="state">Waiting for your wallet</div>
         </g:if>
@@ -96,6 +113,19 @@
 </main>
 <script>
     (function () {
+        document.querySelectorAll('[data-copy-code]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var field = document.getElementById(button.getAttribute('data-copy-code'));
+                var result = document.getElementById(button.getAttribute('data-copy-code').replace('-connect-code', '-copy-result'));
+                function copied() { result.textContent = 'Copied. Paste it into DSM wallet → Apps → Connect an app.'; }
+                function selectForManualCopy() { field.focus(); field.select(); result.textContent = 'Select Copy from the phone menu, then paste it into the wallet.'; }
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(field.value).then(copied, selectForManualCopy);
+                } else {
+                    selectForManualCopy();
+                }
+            });
+        });
         var claimState = document.getElementById('claim-state');
         if (claimState) {
             var claimUrl = '${createLink(action: 'claim')}';
@@ -105,7 +135,10 @@
                     .then(function (s) {
                         if (s.state === 'SIGNED_IN') { claimState.textContent = 'You own this organization now. Signing you in.'; window.location = s.redirect; return; }
                         if (s.state === 'OWNED') { claimState.textContent = 'Someone else just claimed it.'; setTimeout(function () { window.location.reload(); }, 3000); return; }
-                        if (s.state === 'ASKED') claimState.textContent = 'Your wallet is connected. Approve the owner statement on your phone: Apps, Waiting.';
+                        if (s.state === 'ASKED') {
+                            claimState.textContent = 'Your wallet is connected. Approve the owner statement on your phone: Apps, Waiting.';
+                            document.getElementById('claim-approve-link').hidden = false;
+                        }
                         if (s.state === 'FAILED') claimState.textContent = s.reason;
                         setTimeout(pollClaim, 3000);
                     })
