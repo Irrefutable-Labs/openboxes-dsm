@@ -77,6 +77,8 @@ services:
       - ./openboxes.war:/app/openboxes.war:ro
       - ./run:/opt/openboxes/run
       - ./home:/home/openboxes
+      # code-as-config: root-owned, read-only, never writable by the application's uid
+      - ./openboxes-config.groovy:/home/openboxes/.grails/openboxes-config.groovy:ro
     command:
       - java
       - -Xms512m

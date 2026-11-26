@@ -31,11 +31,11 @@ esac
 SSH=(ssh -o BatchMode=yes -i "$KEY" "ubuntu@$HOST")
 
 echo "==> $DIR"
-"${SSH[@]}" "sudo install -d -m 755 $DIR $DIR/network && sudo install -d -m 755 -o 10001 -g 10001 $DIR/home $DIR/home/.grails \
+"${SSH[@]}" "sudo install -d -m 755 $DIR $DIR/network && sudo install -d -m 755 -o 10001 -g 10001 $DIR/home && sudo install -d -m 755 -o 10001 -g 10001 $DIR/home/.grails \
   && sudo install -d -m 700 -o 10001 -g 10001 $DIR/run"
 sudo_put() { "${SSH[@]}" "sudo tee $1 >/dev/null && sudo chmod $2 $1"; }
 sudo_put "$DIR/compose.yml" 644 < compose.yml
-sudo_put "$DIR/home/.grails/openboxes-config.groovy" 644 < ../demo/dashboard-config.groovy
+sudo_put "$DIR/openboxes-config.groovy" 644 < ../demo/dashboard-config.groovy
 if [[ -n "${DSM_ENV_CONFIG:-}" ]]; then sudo_put "$DIR/network/dsm_env_config.toml" 644 < "$DSM_ENV_CONFIG"; fi
 "${SSH[@]}" "sudo test -s $DIR/network/dsm_env_config.toml || sudo cp /opt/openboxes/network/dsm_env_config.toml $DIR/network/"
 if [[ -n "$WAR" ]]; then
