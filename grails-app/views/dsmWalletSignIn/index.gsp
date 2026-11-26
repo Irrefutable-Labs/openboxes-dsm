@@ -26,7 +26,7 @@
         .refused { padding: 12px 14px; border-radius: 10px; background: var(--bad-bg); color: var(--bad); font-weight: 600; margin-bottom: 14px; }
         .qr { text-align: center; }
         .qr img { width: 240px; height: 240px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin: 12px 0 6px; }
-        .connect-code { min-height: 84px; resize: vertical; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+        .connect-code { display: block; width: 100%; min-height: 84px; margin-top: 6px; padding: 10px 12px; border: 1px solid #c9d2dd; border-radius: 10px; resize: vertical; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
         .wallet-link { display: block; width: 100%; min-height: 50px; margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--primary); color: #fff; font-weight: 700; text-align: center; }
         .wallet-link[hidden] { display: none; }
         .copy-code { background: #dceafa; color: var(--bar); }
@@ -137,7 +137,8 @@
                         if (s.state === 'OWNED') { claimState.textContent = 'Someone else just claimed it.'; setTimeout(function () { window.location.reload(); }, 3000); return; }
                         if (s.state === 'ASKED') {
                             claimState.textContent = 'Your wallet is connected. Approve the owner statement on your phone: Apps, Waiting.';
-                            document.getElementById('claim-approve-link').hidden = false;
+                            var approveLink = document.getElementById('claim-approve-link');
+                            if (approveLink) approveLink.hidden = false;
                         }
                         if (s.state === 'FAILED') claimState.textContent = s.reason;
                         setTimeout(pollClaim, 3000);
