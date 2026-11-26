@@ -23,6 +23,7 @@ WAR="${2:-}"
 HOST="${OVH_HOST:-148.113.137.67}"
 KEY="${SSH_KEY:-$HOME/.ssh/dsm-deploy}"
 TAG="${DSM_APP_HOST_TAG:-512759a5d}"
+[[ "$HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "OVH_HOST must be an IPv4 address and DSM_APP_HOST_TAG an image tag" >&2; exit 2; }
 case "$ORG" in
   a) DIR=/opt/openboxes;   PROJ=openboxes;   APP=8081; DB=33061; INGRESS=8781; RELAY=8444; SITE="openboxes.$HOST.sslip.io" ;;
   b) DIR=/opt/openboxes-b; PROJ=openboxes-b; APP=8082; DB=33062; INGRESS=8782; RELAY=8446; SITE="openboxes-b.$HOST.sslip.io" ;;
