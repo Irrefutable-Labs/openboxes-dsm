@@ -1,0 +1,95 @@
+# One organization's Open Boxes on the games host (dsm-games-1, OVH BHS5, 148.113.137.67): the application, its MySQL
+# and its own DSM account (dsm-app-host, built from DSM main) on the beta storage fleet. Each organization has its own
+# directory on the host, /opt/openboxes (organization A) and /opt/openboxes-b (organization B), with this file and an
+# .env naming its ports and hostname (dsm/deploy/deploy_ovh.sh writes it). Browsers reach it through the host's shared
+# Caddy (/opt/https) at https://$SITE/openboxes/; wallets reach the account's relay at https://$PUBLIC_IP:$RELAY_PORT.
+# There are no passwords: the first wallet to claim it with the one-time setup code in run/setup-code (0600) owns it.
+services:
+  mysql:
+    image: mysql:8.0.36
+    restart: unless-stopped
+    ports: ['127.0.0.1:${DB_PORT:?}:3306']
+    environment:
+      TZ: UTC
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?}
+      MYSQL_DATABASE: openboxes
+      MYSQL_USER: openboxes
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?}
+    command: [--skip-log-bin, --sql-mode=NO_ENGINE_SUBSTITUTION, --character-set-server=utf8mb3, --collation-server=utf8mb3_general_ci]
+    volumes: ['./mysql:/var/lib/mysql']
+    mem_limit: 768m
+    healthcheck:
+      test: [CMD, mysqladmin, ping, -h, 127.0.0.1, --silent]
+      interval: 10s
+      retries: 30
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+
+  account:
+    image: dsm-app-host:${DSM_APP_HOST_TAG:?}
+    restart: unless-stopped
+    network_mode: host
+    user: '10001:10001'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # a DSM account verifying vaults has gone past 1 GB (Wildstate's, 2026-11-26, OOM-killed mid-match)
+    mem_limit: 2g
+    tmpfs: ['/tmp:size=64m,mode=1777']
+    volumes:
+      - ./run:/opt/openboxes/run
+      - ./network:/network:ro
+    command:
+      - --data-dir
+      - /opt/openboxes/run/host
+      - --ingress-secret-dir
+      - /opt/openboxes/run/ingress
+      - --env-config
+      - /network/dsm_env_config.toml
+      - --game-bind
+      - 127.0.0.1:${INGRESS_PORT:?}
+      - --relay-bind
+      - 0.0.0.0:${RELAY_PORT:?}
+      - --relay-endpoint
+      - https://${PUBLIC_IP:?}:${RELAY_PORT:?}
+      - --relay-name
+      - ${PUBLIC_IP:?}
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+
+  app:
+    image: eclipse-temurin:8-jre
+    restart: unless-stopped
+    network_mode: host
+    user: '10001:10001'
+    depends_on:
+      mysql: {condition: service_healthy}
+      account: {condition: service_started}
+    working_dir: /opt/openboxes/run/app
+    mem_limit: 2500m
+    environment:
+      HOME: /home/openboxes
+      TZ: UTC
+      SERVER_PORT: ${APP_PORT:?}
+      GRAILS_SERVER_URL: https://${SITE:?}/openboxes
+      DATASOURCE_URL: jdbc:mysql://127.0.0.1:${DB_PORT:?}/openboxes?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      DATASOURCE_USERNAME: openboxes
+      DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?}
+    volumes:
+      - ./openboxes.war:/app/openboxes.war:ro
+      - ./run:/opt/openboxes/run
+      - ./home:/home/openboxes
+      # code-as-config: root-owned, read-only, never writable by the application's uid
+      - ./openboxes-config.groovy:/home/openboxes/.grails/openboxes-config.groovy:ro
+    command:
+      - java
+      - -Xms512m
+      - -Xmx1500m
+      - -Djava.awt.headless=true
+      - -Dgrails.env=prod
+      - -jar
+      - /app/openboxes.war
+      - --openboxes.dsm.dataRoot=/opt/openboxes/run
+      - --openboxes.dsm.host.origin=http://127.0.0.1:${INGRESS_PORT:?}
+      - --openboxes.dsm.host.dataDir=/opt/openboxes/run/ingress
+      - --server.address=127.0.0.1
+      - --server.use-forward-headers=true
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
